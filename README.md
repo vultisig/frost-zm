@@ -13,7 +13,7 @@ crates/
   frost-session/       Session-based ceremony driver (setup, message routing, state machine)
   frozt-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
   frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
-  fromt-lib/           Monero — Ed25519 signing, view keys, CKD, subaddresses
+  fromt-lib/           Monero — Ed25519 signing, view keys, CKD, key image ceremony, subaddresses
   fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
   frozt-wasm/          Zcash WASM bindings (wasm-bindgen)
   fromt-wasm/          Monero WASM bindings (wasm-bindgen)
@@ -167,6 +167,7 @@ Birthday records the block height at wallet creation — user-provided for seed 
 - **Resharing** — Threshold rotation preserving public key, view key, and birthday. Uses the session-based API (setup → feed/take message loop → result).
 - **Key Import** — Split existing Monero spend key into threshold shares. View key derived via `Keccak256(spend_key)`.
 - **CKD** — 2-round child key derivation by `(account, index)` using path `Keccak256("fromt/ckd" || account || index)`.
+- **Key Image Generation** — 2-round ceremony (`key_image_part1` / `key_image_part2`) computing Monero key images for scanned outputs without reconstructing the aggregate spend key. Each signer contributes a point share; the final output is the standard `(key_offset + spend_key) * Hp(P)` key image.
 - **Spend** — 3-phase threshold CLSAG transaction signing: preprocess → sign → complete. Network operations (scanning, decoy selection) require the `rpc` feature.
 
 ### Address Derivation
@@ -195,7 +196,7 @@ sub_spend = spend_point + G * hash
 |---------|---------|-----------------|
 | `rpc`   | no      | `tokio`, `reqwest`, `monero-simple-request-rpc` — daemon RPC scanning, decoy selection, key image checking |
 
-Without `rpc` (default, including WASM builds), all pure crypto operations are available: DKG, signing, resharing, key import, CKD, address derivation, spend preprocess/sign/complete. Only `scan_balance` and `prepare_spend` (which talk to a Monero daemon) are gated. `fromt-sdk` enables `rpc` for native builds.
+Without `rpc` (default, including WASM builds), all pure crypto operations are available: DKG, signing, resharing, key import, CKD, key image generation, address derivation, spend preprocess/sign/complete. Only `scan_balance` and `prepare_spend` (which talk to a Monero daemon) are gated. `fromt-sdk` enables `rpc` for native builds.
 
 ### Upstream Sources
 
@@ -228,7 +229,7 @@ DKG delegates to `frost_core::keys::dkg::part1/2/3`. FROST keyshare conversion t
 
 ### What we implement ourselves
 
-Five protocol extensions compose upstream primitives. All live in `frost-ceremony/` (generic) and `fromt-lib/` (Monero-specific):
+Six protocol extensions compose upstream primitives. All live in `frost-ceremony/` (generic) and `fromt-lib/` (Monero-specific):
 
 **Resharing** (`frost-ceremony/src/reshare.rs`) — Same generic reshare as frozt. Lagrange interpolation over the Ed25519 scalar field using upstream `curve25519-dalek` arithmetic. Result feeds into standard FROST DKG rounds.
 
@@ -237,6 +238,8 @@ Five protocol extensions compose upstream primitives. All live in `frost-ceremon
 **View key aggregation** (`fromt-lib/src/ceremony/dkg.rs`, `fromt-lib/src/ceremony/reshare.rs`) — During DKG and reshare, each party generates a random 32-byte view key share. These are exchanged alongside FROST round packages and summed to produce the aggregate view key. This is simple scalar addition — no new cryptographic assumptions. The aggregate is stored in `KeyShareBundle.view_key`.
 
 **CKD — Child Key Derivation** (`fromt-lib/src/ceremony/ckd.rs`) — 2-round protocol deriving child signing shares by `(account, index)`. Path scalar is `Keccak256("fromt/ckd" || account_le32 || index_le32)`. Each party tweaks their share by this deterministic scalar. Uses upstream `curve25519-dalek` for scalar math.
+
+**Threshold key image generation** (`fromt-lib/src/ceremony/key_image.rs`) — 2-round protocol computing Monero key images for one or more outputs without reconstructing the spend key. For output public key `P` and scan-derived `key_offset`, each signer broadcasts the point `lambda_i * x_i * Hp(P)`, where `x_i` is its FROST signing share and `lambda_i` is the Lagrange coefficient for the selected signer set. Summing these point partials and adding `key_offset * Hp(P)` yields the standard Monero key image `(key_offset + x) * Hp(P)`. Only points cross the wire, so no party learns the aggregate spend key.
 
 **Address derivation** (`fromt-lib/src/monero/address.rs`, `fromt-lib/src/monero/subaddress.rs`) — Monero base58 encoding with Keccak256 checksums. Main address is `prefix || spend_pub || view_pub || checksum`. Subaddresses use the standard `"SubAddr\0"` domain-separated hash. All crypto ops use upstream `curve25519-dalek` point/scalar arithmetic and `tiny-keccak` for hashing.
 
