@@ -1,0 +1,22 @@
+{
+  "server": {
+    "port": 8080,
+    "vaults_file_path": "/data/vaults"
+  },
+  "relay": {
+    "server": "http://relay:9090"
+  },
+  "redis": {
+    "host": "redis",
+    "port": "6379",
+    "password": "frozt-redis-secret",
+    "db": 1
+  },
+  "block_storage": {
+    "host": "",
+    "region": "",
+    "access_key": "",
+    "secret": "",
+    "bucket": ""
+  }
+}

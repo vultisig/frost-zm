@@ -1,0 +1,39 @@
+FROM rust:1.89-bookworm AS rust-builder
+
+WORKDIR /build
+COPY frost-zm/Cargo.toml frost-zm/Cargo.lock ./
+COPY frost-zm/crates/ crates/
+
+RUN cargo build --release -p fromt-lib
+
+FROM golang:1.24-bookworm AS go-builder
+
+COPY --from=rust-builder /build/target/release/libfromtlib.so /usr/lib/
+RUN ldconfig
+
+WORKDIR /build
+COPY frost-zm/go/ go/
+COPY frost-zm/client/fromt/ client/fromt/
+COPY frost-zm/client/shared/ client/shared/
+
+COPY --from=rust-builder /build/crates/fromt-lib/include/fromt-lib.h go/fromt/includes/
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then LIBDIR=linux-amd64; else LIBDIR=linux-arm64; fi && \
+    mkdir -p go/fromt/includes/$LIBDIR && \
+    cp /usr/lib/libfromtlib.so go/fromt/includes/$LIBDIR/
+
+WORKDIR /build/client/fromt
+RUN CGO_ENABLED=1 go build -o /fromt-party ./cmd/fromt-party
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=rust-builder /build/target/release/libfromtlib.so /usr/lib/
+RUN ldconfig
+
+COPY --from=go-builder /fromt-party /usr/local/bin/fromt-party
+
+RUN mkdir -p /data/keystore
+
+ENTRYPOINT ["fromt-party"]

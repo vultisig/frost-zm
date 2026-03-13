@@ -1,0 +1,9 @@
+[package]
+name = "frost-session"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+frost-ffi = { path = "../frost-ffi" }
+frost-core = { version = "2", features = ["internals"] }
+rand = "0.8"

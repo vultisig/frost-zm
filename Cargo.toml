@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/frost-ffi",
+    "crates/frost-ceremony",
+    "crates/frozt-lib",
+    "crates/frozt-sdk",
+    "crates/frozt-wasm",
+    "crates/fromt-lib",
+    "crates/fromt-sdk",
+    "crates/fromt-wasm",
+    "crates/frost-session",
+]
+
+[patch.crates-io]
+reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552" }

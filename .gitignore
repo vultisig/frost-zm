@@ -1,0 +1,9 @@
+/target
+**/target
+**/node_modules
+**/dist
+**/package-lock.json
+*.swp
+.DS_Store
+.env
+/pkg
