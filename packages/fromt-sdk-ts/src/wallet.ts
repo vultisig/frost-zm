@@ -3,6 +3,8 @@ import {
   fromt_derive_spend_pub_key,
   fromt_derive_address,
   fromt_derive_subaddress,
+  fromt_derive_key_offset,
+  fromt_derive_commitment_mask,
   fromt_keyshare_birthday,
   fromt_keyshare_network,
   fromt_compute_key_image,
@@ -47,6 +49,16 @@ export class FromtWallet {
     if (n === 1) return "testnet";
     if (n === 2) return "stagenet";
     return "mainnet";
+  }
+
+  deriveKeyOffset(txPubKey: Uint8Array, outputIndex: number): Uint8Array {
+    const viewKey = fromt_derive_view_key(this.keyShare);
+    return fromt_derive_key_offset(viewKey, txPubKey, BigInt(outputIndex));
+  }
+
+  deriveCommitmentMask(txPubKey: Uint8Array, outputIndex: number): Uint8Array {
+    const viewKey = fromt_derive_view_key(this.keyShare);
+    return fromt_derive_commitment_mask(viewKey, txPubKey, BigInt(outputIndex));
   }
 
   computeKeyImage(keyOffset: Uint8Array, outputKey: Uint8Array, spendKey: Uint8Array): Uint8Array {

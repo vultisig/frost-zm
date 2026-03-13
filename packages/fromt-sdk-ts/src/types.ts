@@ -31,3 +31,22 @@ export interface MoneroKeys {
   viewKey: Uint8Array;
   spendPubKey: Uint8Array;
 }
+
+export interface SpendInput {
+  amount: number;
+  keyOffset: Uint8Array;
+  outputKey: Uint8Array;
+  commitmentMask: Uint8Array;
+  globalIndex: number;
+}
+
+export interface DecoyMember {
+  outputKey: Uint8Array;
+  commitment: Uint8Array;
+  globalIndex: number;
+}
+
+export interface DecoyRing {
+  realIndex: number;
+  members: DecoyMember[];
+}

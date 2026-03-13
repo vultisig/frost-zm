@@ -1060,6 +1060,7 @@ dependencies = [
  "tiny-keccak",
  "wasm-bindgen",
  "wasm-bindgen-test",
+ "zeroize",
 ]
 
 [[package]]

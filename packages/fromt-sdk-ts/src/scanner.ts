@@ -1,5 +1,5 @@
 import moneroTs from "monero-ts";
-import type { ScanResult, ScanProgress, FoundOutput, ScannedOutputs } from "./types.js";
+import type { ScanResult, ScanProgress, FoundOutput, ScannedOutputs, SpendInput, DecoyRing } from "./types.js";
 
 export interface ScanOptions {
   daemonUrl: string;
@@ -228,6 +228,67 @@ export function filterSpentOutputs(
     chainHeight: 0,
     scannedHeight: 0,
   };
+}
+
+export function encodeSpendInputs(inputs: SpendInput[]): Uint8Array {
+  const recordSize = 8 + 32 + 32 + 32 + 8;
+  const buf = new Uint8Array(4 + inputs.length * recordSize);
+  const view = new DataView(buf.buffer);
+  view.setUint32(0, inputs.length, true);
+
+  let off = 4;
+  for (const input of inputs) {
+    const lo = input.amount & 0xffffffff;
+    const hi = Math.floor(input.amount / 0x100000000) & 0xffffffff;
+    view.setUint32(off, lo, true);
+    view.setUint32(off + 4, hi, true);
+    off += 8;
+    buf.set(input.keyOffset.slice(0, 32), off);
+    off += 32;
+    buf.set(input.outputKey.slice(0, 32), off);
+    off += 32;
+    buf.set(input.commitmentMask.slice(0, 32), off);
+    off += 32;
+    const glo = input.globalIndex & 0xffffffff;
+    const ghi = Math.floor(input.globalIndex / 0x100000000) & 0xffffffff;
+    view.setUint32(off, glo, true);
+    view.setUint32(off + 4, ghi, true);
+    off += 8;
+  }
+
+  return buf;
+}
+
+export function encodeDecoyRings(rings: DecoyRing[]): Uint8Array {
+  let totalSize = 4;
+  for (const ring of rings) {
+    totalSize += 4 + 4 + ring.members.length * (32 + 32 + 8);
+  }
+
+  const buf = new Uint8Array(totalSize);
+  const view = new DataView(buf.buffer);
+  view.setUint32(0, rings.length, true);
+
+  let off = 4;
+  for (const ring of rings) {
+    view.setUint32(off, ring.members.length, true);
+    off += 4;
+    view.setUint32(off, ring.realIndex, true);
+    off += 4;
+    for (const member of ring.members) {
+      buf.set(member.outputKey.slice(0, 32), off);
+      off += 32;
+      buf.set(member.commitment.slice(0, 32), off);
+      off += 32;
+      const mlo = member.globalIndex & 0xffffffff;
+      const mhi = Math.floor(member.globalIndex / 0x100000000) & 0xffffffff;
+      view.setUint32(off, mlo, true);
+      view.setUint32(off + 4, mhi, true);
+      off += 8;
+    }
+  }
+
+  return buf;
 }
 
 function hexToBytes(value: string | undefined): Uint8Array {

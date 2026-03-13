@@ -6,6 +6,247 @@ use fromtlib::handle::Handle;
 
 use crate::to_js_err;
 
+struct ParsedInput {
+    amount: u64,
+    key_offset: [u8; 32],
+    output_key: [u8; 32],
+    commitment_mask: [u8; 32],
+    global_index: u64,
+}
+
+struct RingMember {
+    output_key: [u8; 32],
+    commitment: [u8; 32],
+    global_index: u64,
+}
+
+struct ParsedRing {
+    members: Vec<RingMember>,
+    real_index: u32,
+}
+
+fn parse_ts_inputs(data: &[u8]) -> Result<Vec<ParsedInput>, String> {
+    if data.len() < 4 {
+        return Err("inputs data too short".into());
+    }
+    let count = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let record_size = 8 + 32 + 32 + 32 + 8;
+    let expected = 4 + count * record_size;
+    if data.len() < expected {
+        return Err(format!("inputs data: expected {} bytes, got {}", expected, data.len()));
+    }
+
+    let mut inputs = Vec::with_capacity(count);
+    let mut off = 4;
+    for _ in 0..count {
+        let amount = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
+        off += 8;
+        let mut key_offset = [0u8; 32];
+        key_offset.copy_from_slice(&data[off..off + 32]);
+        off += 32;
+        let mut output_key = [0u8; 32];
+        output_key.copy_from_slice(&data[off..off + 32]);
+        off += 32;
+        let mut commitment_mask = [0u8; 32];
+        commitment_mask.copy_from_slice(&data[off..off + 32]);
+        off += 32;
+        let global_index = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
+        off += 8;
+        inputs.push(ParsedInput { amount, key_offset, output_key, commitment_mask, global_index });
+    }
+    if off != expected {
+        return Err(format!("inputs data: parsed {} bytes, expected {}", off, expected));
+    }
+    Ok(inputs)
+}
+
+fn parse_ts_decoys(data: &[u8]) -> Result<Vec<ParsedRing>, String> {
+    if data.len() < 4 {
+        return Err("decoys data too short".into());
+    }
+    let ring_count = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+    let mut rings = Vec::with_capacity(ring_count);
+    let mut off = 4;
+
+    for _ in 0..ring_count {
+        if data.len() < off + 8 {
+            return Err("decoys data truncated at ring header".into());
+        }
+        let member_count = u32::from_le_bytes(data[off..off + 4].try_into().unwrap()) as usize;
+        off += 4;
+        let real_index = u32::from_le_bytes(data[off..off + 4].try_into().unwrap());
+        off += 4;
+
+        let member_size = 32 + 32 + 8;
+        if data.len() < off + member_count * member_size {
+            return Err("decoys data truncated at ring members".into());
+        }
+        let mut members = Vec::with_capacity(member_count);
+        for _ in 0..member_count {
+            let mut output_key = [0u8; 32];
+            output_key.copy_from_slice(&data[off..off + 32]);
+            off += 32;
+            let mut commitment = [0u8; 32];
+            commitment.copy_from_slice(&data[off..off + 32]);
+            off += 32;
+            let global_index = u64::from_le_bytes(data[off..off + 8].try_into().unwrap());
+            off += 8;
+            members.push(RingMember { output_key, commitment, global_index });
+        }
+        rings.push(ParsedRing { members, real_index });
+    }
+    if off != data.len() {
+        return Err(format!(
+            "decoys data has {} trailing bytes",
+            data.len().saturating_sub(off)
+        ));
+    }
+    Ok(rings)
+}
+
+fn write_varint(buf: &mut Vec<u8>, mut val: u64) {
+    loop {
+        let byte = (val & 0x7F) as u8;
+        val >>= 7;
+        if val != 0 {
+            buf.push(byte | 0x80);
+        } else {
+            buf.push(byte);
+            break;
+        }
+    }
+}
+
+fn serialize_output_with_decoys(input: &ParsedInput, ring: &ParsedRing) -> Result<Vec<u8>, String> {
+    if ring.members.is_empty() {
+        return Err("ring must contain at least one member".into());
+    }
+
+    let real_index = ring.real_index as usize;
+    let real_member = ring
+        .members
+        .get(real_index)
+        .ok_or_else(|| format!("real_index {} out of range for ring of size {}", ring.real_index, ring.members.len()))?;
+
+    if real_member.global_index != input.global_index {
+        return Err(format!(
+            "real member global index {} does not match input global index {}",
+            real_member.global_index, input.global_index
+        ));
+    }
+
+    let mut buf = Vec::with_capacity(256);
+
+    buf.extend_from_slice(&input.output_key);
+    buf.extend_from_slice(&input.key_offset);
+    buf.extend_from_slice(&input.commitment_mask);
+    buf.extend_from_slice(&input.amount.to_le_bytes());
+
+    let mut indexed: Vec<(usize, &RingMember)> = ring.members.iter().enumerate().collect();
+    indexed.sort_by_key(|(_, m)| m.global_index);
+
+    let mut sorted_signer_index = None;
+    for (new_pos, (orig_idx, _)) in indexed.iter().enumerate() {
+        if *orig_idx == ring.real_index as usize {
+            sorted_signer_index = Some(new_pos as u8);
+            break;
+        }
+    }
+    let sorted_signer_index = sorted_signer_index.ok_or_else(|| {
+        format!(
+            "real_index {} not found after sorting ring of size {}",
+            ring.real_index,
+            ring.members.len()
+        )
+    })?;
+
+    let mut offsets = Vec::with_capacity(indexed.len());
+    let mut prev = 0u64;
+    for (_, member) in &indexed {
+        offsets.push(member.global_index - prev);
+        prev = member.global_index;
+    }
+
+    write_varint(&mut buf, indexed.len() as u64);
+    for &offset in &offsets {
+        write_varint(&mut buf, offset);
+    }
+
+    buf.push(sorted_signer_index);
+
+    for (_, member) in &indexed {
+        buf.extend_from_slice(&member.output_key);
+        buf.extend_from_slice(&member.commitment);
+    }
+
+    Ok(buf)
+}
+
+#[wasm_bindgen]
+pub fn fromt_build_signable_tx(
+    key_share: &[u8],
+    recipient: &str,
+    amount: u64,
+    fee_per_weight: u64,
+    fee_mask: u64,
+    inputs_data: &[u8],
+    decoys_data: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+    use zeroize::Zeroizing;
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+
+    let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
+    let view_pair = spend::view_pair_from_bundle(&bundle).map_err(to_js_err)?;
+
+    let network = match bundle.network {
+        0 => monero_wallet::address::Network::Mainnet,
+        1 => monero_wallet::address::Network::Testnet,
+        2 => monero_wallet::address::Network::Stagenet,
+        _ => return Err(JsValue::from_str("unknown network")),
+    };
+    let recipient_addr = monero_wallet::address::MoneroAddress::from_str(
+        network,
+        recipient,
+    ).map_err(to_js_err)?;
+
+    let fee_rate = monero_wallet::interface::FeeRate::new(fee_per_weight, fee_mask)
+        .ok_or_else(|| JsValue::from_str("invalid fee rate"))?;
+
+    let inputs = parse_ts_inputs(inputs_data).map_err(|e| JsValue::from_str(&e))?;
+    let rings = parse_ts_decoys(decoys_data).map_err(|e| JsValue::from_str(&e))?;
+
+    if inputs.len() != rings.len() {
+        return Err(JsValue::from_str("inputs and decoys count mismatch"));
+    }
+
+    let mut outputs_with_decoys = Vec::new();
+    for (input, ring) in inputs.iter().zip(rings.iter()) {
+        let serialized = serialize_output_with_decoys(input, ring)
+            .map_err(|e| JsValue::from_str(&e))?;
+        let owd = monero_wallet::OutputWithDecoys::read(&mut &serialized[..])
+            .map_err(|e| JsValue::from_str(&format!("OutputWithDecoys deserialize: {:?}", e)))?;
+        outputs_with_decoys.push(owd);
+    }
+
+    let mut outgoing_view = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(outgoing_view.as_mut());
+
+    let change = monero_wallet::send::Change::new(view_pair, None);
+
+    let signable = monero_wallet::send::SignableTransaction::new(
+        monero_wallet::ringct::RctType::ClsagBulletproofPlus,
+        outgoing_view,
+        outputs_with_decoys,
+        vec![(recipient_addr, amount)],
+        change,
+        vec![],
+        fee_rate,
+    ).map_err(to_js_err)?;
+
+    Ok(signable.serialize())
+}
+
 #[wasm_bindgen]
 pub struct SpendPreprocessResult {
     handle_id: i32,
