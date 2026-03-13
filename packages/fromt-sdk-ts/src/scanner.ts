@@ -1,6 +1,5 @@
 import moneroTs from "monero-ts";
 import type { ScanResult, ScanProgress, FoundOutput, ScannedOutputs } from "./types.js";
-import { MoneroRpcClient } from "./monero-rpc.js";
 
 export interface ScanOptions {
   daemonUrl: string;
@@ -198,23 +197,13 @@ export function encodeOutputsWithAmounts(outputs: FoundOutput[]): Uint8Array {
   return buf;
 }
 
-export async function filterSpentOutputs(
-  daemonUrl: string,
+export function filterSpentOutputs(
   outputs: FoundOutput[],
-  keyImages: Uint8Array,
-): Promise<ScanResult> {
-  if (keyImages.length !== outputs.length * 32) {
-    throw new Error(`expected ${outputs.length * 32} bytes of key images, got ${keyImages.length}`);
+  spentFlags: boolean[],
+): ScanResult {
+  if (spentFlags.length < outputs.length) {
+    throw new Error(`expected ${outputs.length} spent flags, got ${spentFlags.length}`);
   }
-
-  const kiHex: string[] = [];
-  for (let i = 0; i < outputs.length; i++) {
-    const ki = keyImages.slice(i * 32, (i + 1) * 32);
-    kiHex.push(bytesToHex(ki));
-  }
-
-  const rpc = new MoneroRpcClient(daemonUrl);
-  const spentFlags = await rpc.isKeyImageSpent(kiHex);
 
   const unspent: FoundOutput[] = [];
   let spentCount = 0;
@@ -239,12 +228,6 @@ export async function filterSpentOutputs(
     chainHeight: 0,
     scannedHeight: 0,
   };
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function hexToBytes(value: string | undefined): Uint8Array {

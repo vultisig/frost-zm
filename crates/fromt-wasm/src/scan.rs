@@ -104,6 +104,19 @@ pub fn fromt_outputs_for_key_image(outputs_data: &[u8]) -> Result<Vec<u8>, JsVal
 }
 
 #[wasm_bindgen]
+pub fn fromt_filter_spent_outputs(
+    outputs_data: &[u8],
+    spent_flags: &[u8],
+) -> Result<Vec<u32>, JsValue> {
+    let (balance, num_unspent) =
+        fromtlib::monero::spend::filter_spent_outputs(outputs_data, spent_flags)
+            .map_err(to_js_err)?;
+    let bal_lo = (balance & 0xFFFFFFFF) as u32;
+    let bal_hi = (balance >> 32) as u32;
+    Ok(vec![bal_lo, bal_hi, num_unspent])
+}
+
+#[wasm_bindgen]
 pub fn fromt_keyshare_birthday(key_share: &[u8]) -> Result<u64, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
     Ok(bundle.birthday)

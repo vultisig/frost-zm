@@ -93,11 +93,9 @@ async fn check_key_images_spent(
     Ok(flags)
 }
 
-#[cfg(feature = "rpc")]
-pub async fn filter_spent_outputs(
-    daemon_url: &str,
+pub fn filter_spent_outputs(
     outputs_data: &[u8],
-    key_images_data: &[u8],
+    spent_flags: &[u8],
 ) -> Result<(u64, u32), lib_error> {
     if outputs_data.len() < 4 {
         return Err(lib_error::LIB_SERIALIZATION_ERROR);
@@ -109,25 +107,14 @@ pub async fn filter_spent_outputs(
     if outputs_data.len() < expected_outputs_len {
         return Err(lib_error::LIB_SERIALIZATION_ERROR);
     }
-    let expected_ki_len = count * 32;
-    if key_images_data.len() < expected_ki_len {
+    if spent_flags.len() < count {
         return Err(lib_error::LIB_SERIALIZATION_ERROR);
     }
-
-    let mut key_images: Vec<[u8; 32]> = Vec::with_capacity(count);
-    for i in 0..count {
-        let mut ki = [0u8; 32];
-        ki.copy_from_slice(&key_images_data[i * 32..(i + 1) * 32]);
-        key_images.push(ki);
-    }
-
-    let spent_flags = check_key_images_spent(daemon_url, &key_images).await?;
 
     let mut balance = 0u64;
     let mut num_unspent = 0u32;
     for i in 0..count {
-        let spent = spent_flags.get(i).copied().unwrap_or(false);
-        if !spent {
+        if spent_flags[i] == 0 {
             let offset = 4 + i * 72 + 64;
             let amount = u64::from_le_bytes(
                 outputs_data[offset..offset + 8]
@@ -138,11 +125,6 @@ pub async fn filter_spent_outputs(
             num_unspent += 1;
         }
     }
-
-    eprintln!(
-        "[fromt] filter_spent_outputs: {} total, {} unspent, balance={}",
-        count, num_unspent, balance
-    );
 
     Ok((balance, num_unspent))
 }

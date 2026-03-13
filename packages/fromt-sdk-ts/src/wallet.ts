@@ -108,12 +108,11 @@ export class FromtWallet {
     return fromt_outputs_for_key_image(outputsData);
   }
 
-  async filterSpentOutputs(
-    daemonUrl: string,
+  filterSpentOutputs(
     outputs: ScannedOutputs["outputs"],
-    keyImages: Uint8Array,
-  ): Promise<ScanResult> {
-    return filterSpentOutputs(daemonUrl, outputs, keyImages);
+    spentFlags: boolean[],
+  ): ScanResult {
+    return filterSpentOutputs(outputs, spentFlags);
   }
 }
 

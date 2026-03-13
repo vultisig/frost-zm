@@ -92,19 +92,17 @@ func ScanOutputs(keyShare []byte, daemonURL string, birthday uint64) ([]byte, er
 	return copyBuffer(&outData), nil
 }
 
-func FilterSpentOutputs(daemonURL string, outputsData, keyImages []byte) (uint64, uint32, error) {
+func FilterSpentOutputs(outputsData, spentFlags []byte) (uint64, uint32, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
-	urlBytes := []byte(daemonURL)
-	urlSlice := cGoSlice(urlBytes, pinner)
 	outSlice := cGoSlice(outputsData, pinner)
-	kiSlice := cGoSlice(keyImages, pinner)
+	flagsSlice := cGoSlice(spentFlags, pinner)
 
 	var outBalance C.uint64_t
 	var outNumOutputs C.uint32_t
 
-	res := C.fromt_filter_spent_outputs(urlSlice, outSlice, kiSlice, &outBalance, &outNumOutputs)
+	res := C.fromt_filter_spent_outputs(outSlice, flagsSlice, &outBalance, &outNumOutputs)
 	err := mapLibError(int(res))
 	if err != nil {
 		return 0, 0, err

@@ -89,28 +89,19 @@ pub extern "C" fn fromt_scan_outputs(
 
 #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn fromt_filter_spent_outputs(
-    daemon_url: Option<&go_slice>,
     outputs_data: Option<&go_slice>,
-    key_images: Option<&go_slice>,
+    spent_flags: Option<&go_slice>,
     out_balance: Option<&mut u64>,
     out_num_outputs: Option<&mut u32>,
 ) -> lib_error {
     with_error_handler(|| {
-        let url_data = daemon_url.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_data = outputs_data.ok_or(lib_error::LIB_NULL_PTR)?;
-        let ki_data = key_images.ok_or(lib_error::LIB_NULL_PTR)?;
+        let flags_data = spent_flags.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_bal = out_balance.ok_or(lib_error::LIB_NULL_PTR)?;
         let out_num = out_num_outputs.ok_or(lib_error::LIB_NULL_PTR)?;
 
-        let url = std::str::from_utf8(url_data.as_slice())
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
-
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
-
-        let (balance, count) = rt.block_on(async {
-            spend::filter_spent_outputs(url, out_data.as_slice(), ki_data.as_slice()).await
-        })?;
+        let (balance, count) =
+            spend::filter_spent_outputs(out_data.as_slice(), flags_data.as_slice())?;
 
         *out_bal = balance;
         *out_num = count;

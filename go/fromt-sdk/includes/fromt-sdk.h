@@ -53,9 +53,8 @@ lib_error fromt_scan_outputs(const go_slice *key_share,
                               tss_buffer *out_data);
 
 /* Filter Spent Outputs */
-lib_error fromt_filter_spent_outputs(const go_slice *daemon_url,
-                                      const go_slice *outputs_data,
-                                      const go_slice *key_images,
+lib_error fromt_filter_spent_outputs(const go_slice *outputs_data,
+                                      const go_slice *spent_flags,
                                       uint64_t *out_balance,
                                       uint32_t *out_num_outputs);
 
