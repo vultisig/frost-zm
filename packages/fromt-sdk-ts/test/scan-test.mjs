@@ -1,8 +1,29 @@
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// Load .env from repo root
+const __dirnameInit = dirname(fileURLToPath(import.meta.url));
+const envPath = join(__dirnameInit, "..", "..", "..", ".env");
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[key]) {
+      process.env[key] = val;
+    }
+  }
+}
+
+const __dirname = __dirnameInit;
 const wasmPkgDir = join(__dirname, "..", "..", "..", "pkg", "fromt");
 
 const wasmBytes = readFileSync(join(wasmPkgDir, "fromt_wasm_bg.wasm"));
@@ -130,7 +151,7 @@ function hexToBytes(hex) {
   return bytes;
 }
 
-async function fetchTxPubKeys(daemonUrl, txHashes) {
+async function fetchTxData(daemonUrl, txHashes) {
   const uniqueHashes = [...new Set(txHashes)];
   const result = new Map();
 
@@ -146,10 +167,14 @@ async function fetchTxPubKeys(daemonUrl, txHashes) {
     for (let j = 0; j < batch.length; j++) {
       const txJson = JSON.parse(data.txs[j].as_json);
       const extra = txJson.extra;
+      let txPubKey = null;
       if (extra && extra[0] === 1 && extra.length >= 33) {
-        const pubKeyBytes = new Uint8Array(extra.slice(1, 33));
-        result.set(batch[j], pubKeyBytes);
+        txPubKey = new Uint8Array(extra.slice(1, 33));
       }
+      const outputKeys = (txJson.vout || []).map(o =>
+        o?.target?.tagged_key?.key || o?.target?.key || ""
+      );
+      result.set(batch[j], { txPubKey, outputKeys });
     }
   }
 
@@ -168,7 +193,7 @@ async function checkKeyImagesSpent(daemonUrl, keyImages) {
 }
 
 // --- Main ---
-const DAEMON_URL = process.env.MONERO_DAEMON_URL || "http://node.monerodevs.org:18089";
+const DAEMON_URL = process.env.MONERO_DAEMON_URL || "http://xmr-node.cakewallet.com:18081";
 
 const seedHex = process.env.FROMT_SEED_HEX;
 if (!seedHex) { console.error("FROMT_SEED_HEX not set"); process.exit(1); }
@@ -193,65 +218,96 @@ const viewKeyBytes = fromt_derive_view_key(bundle1);
 const viewKeyHex = bytesToHex(viewKeyBytes);
 console.log(`View key: ${viewKeyHex.slice(0, 16)}...`);
 
-// Step 1: Scan with view key only (no spend key)
-console.log("\n--- Step 1: View-only scan ---");
-const startScan = Date.now();
+const cacheFile = join(__dirname, "cached-outputs.json");
+let outputs;
 
-const wallet = await moneroTs.createWalletFull({
-  networkType: moneroTs.MoneroNetworkType.MAINNET,
-  primaryAddress: address,
-  privateViewKey: viewKeyHex,
-  restoreHeight: birthday,
-  server: { uri: DAEMON_URL },
-  proxyToWorker: false,
-});
+if (existsSync(cacheFile)) {
+  console.log("\n--- Loading cached outputs ---");
+  const cached = JSON.parse(readFileSync(cacheFile, "utf-8"));
+  outputs = cached.outputs.map(o => ({
+    outputKey: hexToBytes(o.outputKey),
+    keyOffset: hexToBytes(o.keyOffset),
+    amount: o.amount,
+    txHash: o.txHash,
+    outputIndex: o.outputIndex,
+  }));
+  console.log(`  Loaded ${outputs.length} outputs from cache (chain height: ${cached.chainHeight})`);
+} else {
+  // Step 1: Scan with monero-ts (view key only, no spend key)
+  console.log("\n--- Step 1: View-only scan ---");
+  const startScan = Date.now();
 
-const listener = new moneroTs.MoneroWalletListener();
-listener.onSyncProgress = async (height, startHeight, endHeight) => {
-  if ((height - startHeight) % 1000 === 0) {
-    process.stdout.write(`\r  Scanned ${height - startHeight}/${endHeight - startHeight} blocks...`);
-  }
-};
-await wallet.sync(listener);
-process.stdout.write("\r");
+  const wallet = await moneroTs.createWalletFull({
+    networkType: moneroTs.MoneroNetworkType.MAINNET,
+    primaryAddress: address,
+    privateViewKey: viewKeyHex,
+    restoreHeight: birthday,
+    server: { uri: DAEMON_URL },
+    proxyToWorker: false,
+  });
 
-const chainHeight = await wallet.getHeight();
-const allOutputs = await wallet.getOutputs();
-await wallet.close();
+  await wallet.sync();
 
-const scanTime = ((Date.now() - startScan) / 1000).toFixed(1);
-console.log(`  Found ${allOutputs.length} outputs in ${scanTime}s (chain height: ${chainHeight})`);
+  const chainHeight = await wallet.getHeight();
+  const allOutputs = await wallet.getOutputs();
+  await wallet.close();
 
-if (allOutputs.length === 0) {
-  console.log("  No outputs found — nothing to do");
-  process.exit(0);
-}
+  const scanTime = ((Date.now() - startScan) / 1000).toFixed(1);
+  console.log(`  Found ${allOutputs.length} outputs in ${scanTime}s (chain height: ${chainHeight})`);
 
-// Step 2: Derive key_offset for each output
-console.log("\n--- Step 2: Derive key offsets ---");
-
-const txHashes = allOutputs.map(o => o.getTx().getHash());
-const txPubKeys = await fetchTxPubKeys(DAEMON_URL, txHashes);
-console.log(`  Fetched tx pub keys for ${txPubKeys.size} transactions`);
-
-const outputs = [];
-for (const output of allOutputs) {
-  const tx = output.getTx();
-  const txHash = tx.getHash();
-  const txPubKey = txPubKeys.get(txHash);
-  if (!txPubKey) {
-    console.log(`  WARN: no tx pub key for ${txHash}, skipping`);
-    continue;
+  if (allOutputs.length === 0) {
+    console.log("  No outputs found — nothing to do");
+    process.exit(0);
   }
 
-  const outputIndex = output.getIndex() ?? 0;
-  const outputKey = hexToBytes(output.getStealthPublicKey());
-  const keyOffset = fromt_derive_key_offset(viewKeyBytes, txPubKey, BigInt(outputIndex));
-  const amount = Number(output.getAmount());
+  // Step 2: Derive key_offset for each output
+  console.log("\n--- Step 2: Derive key offsets ---");
 
-  outputs.push({ outputKey, keyOffset, amount, txHash, outputIndex });
+  const txHashes = allOutputs.map(o => o.getTx().getHash());
+  const txDataMap = await fetchTxData(DAEMON_URL, txHashes);
+  console.log(`  Fetched tx data for ${txDataMap.size} transactions`);
+
+  outputs = [];
+  for (const output of allOutputs) {
+    const tx = output.getTx();
+    const txHash = tx.getHash();
+    const txData = txDataMap.get(txHash);
+    if (!txData?.txPubKey) {
+      console.log(`  WARN: no tx pub key for ${txHash}, skipping`);
+      continue;
+    }
+
+    const outputKeyHex = output.getStealthPublicKey();
+    const outputKey = hexToBytes(outputKeyHex);
+
+    // Find local output index by matching stealth key in tx vout
+    const localIndex = txData.outputKeys.indexOf(outputKeyHex);
+    if (localIndex < 0) {
+      console.log(`  WARN: output key not found in tx vout for ${txHash}, skipping`);
+      continue;
+    }
+
+    const keyOffset = fromt_derive_key_offset(viewKeyBytes, txData.txPubKey, BigInt(localIndex));
+    const amount = Number(output.getAmount());
+
+    outputs.push({ outputKey, keyOffset, amount, txHash, outputIndex: localIndex });
+  }
+  console.log(`  Derived key offsets for ${outputs.length} outputs`);
+
+  // Save to cache
+  const cacheData = {
+    chainHeight,
+    outputs: outputs.map(o => ({
+      outputKey: bytesToHex(o.outputKey),
+      keyOffset: bytesToHex(o.keyOffset),
+      amount: o.amount,
+      txHash: o.txHash,
+      outputIndex: o.outputIndex,
+    })),
+  };
+  writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
+  console.log(`  Cached outputs to ${cacheFile}`);
 }
-console.log(`  Derived key offsets for ${outputs.length} outputs`);
 
 // Step 3: Run threshold key image ceremony
 console.log("\n--- Step 3: Key image ceremony ---");
@@ -307,6 +363,11 @@ for (let i = 0; i < outputs.length; i++) {
 
 // Step 5: Results
 console.log("\n--- Results ---");
+for (let i = 0; i < outputs.length; i++) {
+  const status = spentFlags[i] ? "SPENT" : "UNSPENT";
+  const xmr = (outputs[i].amount / 1e12).toFixed(6);
+  console.log(`  [${i}] ${status} ${xmr} XMR  tx:${outputs[i].txHash.slice(0,16)}... idx:${outputs[i].outputIndex}`);
+}
 console.log(`  Total outputs: ${outputs.length}`);
 console.log(`  Spent: ${spentCount}`);
 console.log(`  Unspent: ${outputs.length - spentCount}`);

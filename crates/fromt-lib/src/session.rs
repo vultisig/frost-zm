@@ -624,13 +624,7 @@ async fn fromt_key_import_run(
 
         (ct, vk_bytes)
     } else {
-        let mut rng = rand::thread_rng();
-        let vk_share: Scalar = F::random(&mut rng);
-        let vk_bytes: [u8; VK_SHARE_LEN] = F::serialize(&vk_share)
-            .as_ref()
-            .try_into()
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
-        (F::one(), vk_bytes)
+        (F::one(), [0u8; VK_SHARE_LEN])
     };
 
     let (secret1, r1_frost_bytes) =
