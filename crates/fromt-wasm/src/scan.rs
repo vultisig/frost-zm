@@ -80,6 +80,58 @@ pub fn fromt_compute_key_image(
 }
 
 #[wasm_bindgen]
+pub fn fromt_derive_key_offset(
+    view_secret_key: &[u8],
+    tx_pub_key: &[u8],
+    output_index: u64,
+) -> Result<Vec<u8>, JsValue> {
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    use tiny_keccak::{Hasher, Keccak};
+
+    if view_secret_key.len() != 32 || tx_pub_key.len() != 32 {
+        return Err(JsValue::from_str("inputs must be 32 bytes"));
+    }
+
+    let mut a_arr = [0u8; 32];
+    a_arr.copy_from_slice(view_secret_key);
+    let a = curve25519_dalek::Scalar::from_canonical_bytes(a_arr);
+    if bool::from(a.is_none()) {
+        return Err(JsValue::from_str("invalid view key scalar"));
+    }
+    let a = a.unwrap();
+
+    let mut r_arr = [0u8; 32];
+    r_arr.copy_from_slice(tx_pub_key);
+    let r_point = CompressedEdwardsY(r_arr)
+        .decompress()
+        .ok_or_else(|| JsValue::from_str("invalid tx pub key point"))?;
+
+    let shared = (a * r_point).mul_by_cofactor();
+    let derivation = shared.compress().to_bytes();
+
+    let mut buf = Vec::with_capacity(40);
+    buf.extend_from_slice(&derivation);
+    let mut idx = output_index;
+    loop {
+        let byte = (idx & 0x7F) as u8;
+        idx >>= 7;
+        if idx == 0 {
+            buf.push(byte);
+            break;
+        }
+        buf.push(byte | 0x80);
+    }
+
+    let mut keccak = Keccak::v256();
+    keccak.update(&buf);
+    let mut hash = [0u8; 32];
+    keccak.finalize(&mut hash);
+
+    let scalar = curve25519_dalek::Scalar::from_bytes_mod_order(hash);
+    Ok(scalar.to_bytes().to_vec())
+}
+
+#[wasm_bindgen]
 pub fn fromt_outputs_for_key_image(outputs_data: &[u8]) -> Result<Vec<u8>, JsValue> {
     if outputs_data.len() < 4 {
         return Err(JsValue::from_str("outputs data too short"));
