@@ -1,7 +1,7 @@
 use ff::{Field, PrimeField};
 use group::GroupEncoding;
 use sapling_crypto::{
-    bundle::{GrothProofBytes, OutputDescription},
+    bundle::OutputDescription,
     constants::PROOF_GENERATION_KEY_GENERATOR,
     keys::{OutgoingViewingKey, SaplingIvk},
     note::ExtractedNoteCommitment,
@@ -15,7 +15,9 @@ use sapling_crypto::{
     Diversifier, Note, Rseed,
 };
 use wasm_bindgen::prelude::*;
+use zcash_address::unified::{self, Encoding};
 use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE, OUT_CIPHERTEXT_SIZE};
+use zcash_protocol::consensus::NetworkType;
 use zeroize::Zeroize;
 use crate::{to_js_err, J};
 
@@ -409,6 +411,36 @@ pub fn frozt_sapling_try_output_recovery(
     }
 }
 
+/// Build a ZIP-316 Unified Address containing P2PKH (transparent) and Sapling receivers.
+/// `p2pkh_hash` is the 20-byte RIPEMD160(SHA256(compressed_pubkey)) of the ECDSA key.
+/// `sapling_raw_addr` is the 43-byte Sapling payment address (11-byte diversifier + 32-byte pk_d).
+/// Returns the bech32m-encoded unified address string (u1...).
+#[wasm_bindgen]
+pub fn frozt_sapling_build_unified_address(
+    p2pkh_hash: &[u8],
+    sapling_raw_addr: &[u8],
+) -> Result<String, JsError> {
+    if p2pkh_hash.len() != 20 {
+        return Err(JsError::new("p2pkh_hash must be 20 bytes"));
+    }
+    if sapling_raw_addr.len() != 43 {
+        return Err(JsError::new("sapling_raw_addr must be 43 bytes"));
+    }
+
+    let p2pkh: [u8; 20] = p2pkh_hash.try_into().unwrap();
+    let sapling: [u8; 43] = sapling_raw_addr.try_into().unwrap();
+
+    let receivers = vec![
+        unified::Receiver::P2pkh(p2pkh),
+        unified::Receiver::Sapling(sapling),
+    ];
+
+    let ua = unified::Address::try_from_items(receivers)
+        .map_err(|e| JsError::new(&format!("unified address: {:?}", e)))?;
+
+    Ok(ua.encode(&NetworkType::Main))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,4 +496,35 @@ mod tests {
     fn test_derive_keys_wasm() {
         test_derive_keys();
     }
+
+    #[test]
+    fn test_build_unified_address() {
+        use zcash_address::unified::Container;
+
+        let (pkp, extras) = seed_and_extras();
+        let keys = frozt_sapling_derive_keys(&pkp, &extras).unwrap();
+
+        let sapling_raw = bech32::decode(keys.address().as_str()).unwrap().1;
+        assert_eq!(sapling_raw.len(), 43);
+
+        let p2pkh_hash = [0x42u8; 20]; // dummy transparent hash
+        let ua = frozt_sapling_build_unified_address(&p2pkh_hash, &sapling_raw).unwrap();
+        assert!(ua.starts_with("u1"), "unified address should start with u1, got: {}", ua);
+
+        let (net, decoded) = zcash_address::unified::Address::decode(&ua).unwrap();
+        assert_eq!(net, zcash_protocol::consensus::NetworkType::Main);
+        let items = decoded.items();
+        assert_eq!(items.len(), 2);
+
+        let has_sapling = items.iter().any(|r| matches!(r, zcash_address::unified::Receiver::Sapling(_)));
+        let has_p2pkh = items.iter().any(|r| matches!(r, zcash_address::unified::Receiver::P2pkh(_)));
+        assert!(has_sapling, "UA should contain Sapling receiver");
+        assert!(has_p2pkh, "UA should contain P2PKH receiver");
+    }
+
+    #[wasm_bindgen_test]
+    fn test_build_unified_address_wasm() {
+        test_build_unified_address();
+    }
+
 }
