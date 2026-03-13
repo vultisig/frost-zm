@@ -4,9 +4,11 @@ const mocks = vi.hoisted(() => ({
   getLatestBlockHeight: vi.fn<() => Promise<number>>(),
   getBlockRange: vi.fn<() => Promise<unknown[]>>(),
   getTransaction: vi.fn<() => Promise<Uint8Array>>(),
+  getTreeState: vi.fn<() => Promise<string>>(),
   tryDecryptCompact: vi.fn(),
   decryptNoteFull: vi.fn(),
   computeNullifier: vi.fn(),
+  treeSize: vi.fn(),
 }));
 
 vi.mock("../src/lightwalletd.js", () => ({
@@ -14,6 +16,7 @@ vi.mock("../src/lightwalletd.js", () => ({
     getLatestBlockHeight = mocks.getLatestBlockHeight;
     getBlockRange = mocks.getBlockRange;
     getTransaction = mocks.getTransaction;
+    getTreeState = mocks.getTreeState;
   },
 }));
 
@@ -21,6 +24,7 @@ vi.mock("../src/wasm.js", () => ({
   frozt_sapling_try_decrypt_compact: mocks.tryDecryptCompact,
   frozt_sapling_decrypt_note_full: mocks.decryptNoteFull,
   frozt_sapling_compute_nullifier: mocks.computeNullifier,
+  frozt_sapling_tree_size: mocks.treeSize,
 }));
 
 import { scan } from "../src/scanner.js";
@@ -80,6 +84,7 @@ describe("scan", () => {
       dfvk: new Uint8Array(32),
       startHeight: 100,
       endHeight: 100,
+      initialTreeSize: 0,
     });
 
     expect(result.spendableBalance).toBe(7);
@@ -88,6 +93,58 @@ describe("scan", () => {
     expect(result.notes).toHaveLength(1);
     expect(result.notes[0]?.value).toBe(7);
     expect(result.spentNullifiers.has(toHex(spentNullifier))).toBe(true);
+  });
+
+  it("loads the initial sapling tree size when scanning from a nonzero birthday", async () => {
+    const txHash = Uint8Array.from([0xaa, 0xbb, 0xcc, 0xdd]);
+
+    mocks.getTreeState.mockResolvedValue("deadbeef");
+    mocks.treeSize.mockReturnValue(42n);
+    mocks.getBlockRange.mockResolvedValue([
+      {
+        height: 100,
+        transactions: [
+          {
+            hash: txHash,
+            spends: [],
+            outputs: [
+              {
+                cmu: new Uint8Array(32).fill(9),
+                ephemeralKey: new Uint8Array(32).fill(10),
+                ciphertext: new Uint8Array(52).fill(11),
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    mocks.getTransaction.mockResolvedValue(
+      buildSaplingTx([new Uint8Array(580).fill(12)]),
+    );
+    mocks.tryDecryptCompact.mockReturnValueOnce(9n);
+    mocks.decryptNoteFull.mockReturnValueOnce(new Uint8Array([3]));
+    mocks.computeNullifier.mockImplementationOnce((
+      _dfvk: Uint8Array,
+      _noteData: Uint8Array,
+      position: bigint,
+    ) => {
+      expect(position).toBe(42n);
+      return new Uint8Array(32).fill(0xcc);
+    });
+
+    const result = await scan({
+      lightwalletdUrl: "https://lightwalletd.example",
+      ivk: new Uint8Array(32),
+      dfvk: new Uint8Array(128),
+      startHeight: 100,
+      endHeight: 100,
+    });
+
+    expect(mocks.getTreeState).toHaveBeenCalledWith(99);
+    expect(mocks.treeSize).toHaveBeenCalledWith("deadbeef");
+    expect(result.totalNotes).toBe(1);
+    expect(result.spentNotes).toBe(0);
+    expect(result.notes[0]?.position).toBe(42);
   });
 });
 

@@ -2,9 +2,11 @@ import {
   frozt_sapling_try_decrypt_compact,
   frozt_sapling_decrypt_note_full,
   frozt_sapling_compute_nullifier,
+  frozt_sapling_tree_size,
 } from "./wasm.js";
 import type {
   FoundNote,
+  LightwalletTransport,
   ScanProgress,
   ScanResult,
 } from "./types.js";
@@ -19,6 +21,7 @@ export interface ScanOptions {
   initialTreeSize?: number;
   onProgress?: (progress: ScanProgress) => void;
   batchSize?: number;
+  client?: LightwalletTransport;
 }
 
 interface RawNote extends FoundNote {
@@ -36,14 +39,16 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     batchSize = 10000,
   } = options;
 
-  const client = new LightwalletClient(lightwalletdUrl);
+  const client = options.client ?? new LightwalletClient(lightwalletdUrl);
 
   const endHeight = options.endHeight ?? await client.getLatestBlockHeight();
   const totalBlocks = endHeight - startHeight + 1;
 
+  const initialTreeSize = await resolveInitialTreeSize(client, startHeight, options.initialTreeSize);
+
   const rawNotes: RawNote[] = [];
   const spentNullifiers = new Set<string>();
-  let commitmentPos = options.initialTreeSize ?? 0;
+  let commitmentPos = initialTreeSize;
   let scannedBlocks = 0;
 
   for (let batchStart = startHeight; batchStart <= endHeight; batchStart += batchSize) {
@@ -157,6 +162,27 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     chainHeight: endHeight,
     scannedHeight: endHeight,
   };
+}
+
+async function resolveInitialTreeSize(
+  client: LightwalletTransport,
+  startHeight: number,
+  initialTreeSize?: number,
+): Promise<number> {
+  if (initialTreeSize !== undefined) {
+    return initialTreeSize;
+  }
+
+  if (startHeight === 0) {
+    return 0;
+  }
+
+  if (!client.getTreeState) {
+    throw new Error("initialTreeSize is required when getTreeState is unavailable");
+  }
+
+  const treeState = await client.getTreeState(startHeight - 1);
+  return Number(frozt_sapling_tree_size(treeState));
 }
 
 function toHex(bytes: Uint8Array): string {

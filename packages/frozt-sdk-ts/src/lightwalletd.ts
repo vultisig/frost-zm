@@ -35,12 +35,13 @@ export class LightwalletClient {
     return parseRawTransactionData(response);
   }
 
-  async getTreeState(height: number): Promise<Uint8Array> {
+  async getTreeState(height: number): Promise<string> {
     const request = encodeBlockId(height);
-    return this.unaryCall(
+    const response = await this.unaryCall(
       "cash.z.wallet.sdk.rpc.CompactTxStreamer/GetTreeState",
       request,
     );
+    return parseTreeStateSaplingTree(response);
   }
 
   private async unaryCall(method: string, body: Uint8Array): Promise<Uint8Array> {
@@ -243,6 +244,36 @@ function parseCompactTx(data: Uint8Array): CompactTx {
   }
 
   return { hash, spends, outputs };
+}
+
+function parseTreeStateSaplingTree(data: Uint8Array): string {
+  let offset = 0;
+
+  while (offset < data.length) {
+    const tag = data[offset++];
+    const fieldNumber = tag >> 3;
+    const wireType = tag & 0x07;
+
+    if (wireType === 0) {
+      offset = readVarint(data, offset).nextOffset;
+      continue;
+    }
+
+    if (wireType !== 2) {
+      break;
+    }
+
+    const len = readVarint(data, offset);
+    offset = len.nextOffset;
+    const fieldData = data.slice(offset, offset + len.value);
+    offset += len.value;
+
+    if (fieldNumber === 5) {
+      return new TextDecoder().decode(fieldData);
+    }
+  }
+
+  throw new Error("TreeState response did not include saplingTree");
 }
 
 function parseCompactSpend(data: Uint8Array): CompactSpend {

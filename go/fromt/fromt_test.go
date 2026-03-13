@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"testing"
 )
@@ -639,6 +640,162 @@ func encodeCkdPackages(entries []ckdEntry) []byte {
 		buf = append(buf, e.data...)
 	}
 	return buf
+}
+
+func encodeKeyImageOutputs(outputs [][64]byte) []byte {
+	var buf []byte
+	countBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(countBytes, uint32(len(outputs)))
+	buf = append(buf, countBytes...)
+	for _, o := range outputs {
+		buf = append(buf, o[:]...)
+	}
+	return buf
+}
+
+func makeTestOutput(seed byte) [64]byte {
+	var out [64]byte
+	var seedArr [32]byte
+	seedArr[0] = seed
+	copy(out[0:32], seedArr[:])
+	copy(out[32:64], seedArr[:])
+	out[32] = seed + 42
+	return out
+}
+
+func runKeyImageSession(t *testing.T, keyShares [][]byte, signerIndices []int, outputsData []byte) [][]byte {
+	t.Helper()
+
+	parties := make([]PartyInfo, len(signerIndices))
+	for i, idx := range signerIndices {
+		parties[i] = PartyInfo{
+			FrostID: uint16(idx + 1),
+			Name:    []byte(fmt.Sprintf("party-%d", idx+1)),
+		}
+	}
+
+	setup, err := KeyImageSetupMsgNew(parties, outputsData)
+	if err != nil {
+		t.Fatalf("KeyImageSetupMsgNew: %v", err)
+	}
+
+	sessions := make([]*SessionHandle, len(signerIndices))
+	for i, idx := range signerIndices {
+		name := []byte(fmt.Sprintf("party-%d", idx+1))
+		s, sessionErr := KeyImageSessionFromSetup(setup, name, keyShares[idx])
+		if sessionErr != nil {
+			t.Fatalf("KeyImageSessionFromSetup party %d: %v", idx+1, sessionErr)
+		}
+		sessions[i] = s
+	}
+
+	finished := make([]bool, len(sessions))
+	for round := 0; round < 50; round++ {
+		allDone := true
+		for _, f := range finished {
+			if !f {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+
+		type outMsg struct {
+			senderIdx int
+			msg       []byte
+		}
+		var outgoing []outMsg
+
+		for i, s := range sessions {
+			for {
+				msg, takeErr := KeyImageSessionTakeMsg(s)
+				if takeErr != nil {
+					t.Fatalf("KeyImageSessionTakeMsg: %v", takeErr)
+				}
+				if len(msg) == 0 {
+					break
+				}
+				outgoing = append(outgoing, outMsg{senderIdx: i, msg: msg})
+			}
+		}
+
+		for _, om := range outgoing {
+			senderID := uint16(signerIndices[om.senderIdx] + 1)
+			recipient := binary.LittleEndian.Uint16(om.msg[:2])
+			payload := om.msg[2:]
+
+			for targetIdx := range sessions {
+				if targetIdx == om.senderIdx {
+					continue
+				}
+				targetID := uint16(signerIndices[targetIdx] + 1)
+				if recipient != 0 && recipient != targetID {
+					continue
+				}
+				if finished[targetIdx] {
+					continue
+				}
+
+				input := make([]byte, 2+len(payload))
+				binary.LittleEndian.PutUint16(input[:2], senderID)
+				copy(input[2:], payload)
+
+				done, feedErr := KeyImageSessionFeed(sessions[targetIdx], input)
+				if feedErr != nil {
+					t.Fatalf("KeyImageSessionFeed: %v", feedErr)
+				}
+				if done {
+					finished[targetIdx] = true
+				}
+			}
+		}
+	}
+
+	for i, f := range finished {
+		if !f {
+			t.Fatalf("party %d did not finish key image session", signerIndices[i]+1)
+		}
+	}
+
+	var results [][]byte
+	for i, s := range sessions {
+		ki, resErr := KeyImageSessionResult(s)
+		if resErr != nil {
+			t.Fatalf("KeyImageSessionResult party %d: %v", signerIndices[i]+1, resErr)
+		}
+		results = append(results, ki)
+	}
+
+	return results
+}
+
+func TestKeyImage(t *testing.T) {
+	keyShares, _ := runDKG(t, 3, 2)
+
+	out1 := makeTestOutput(7)
+	out2 := makeTestOutput(13)
+	outputsData := encodeKeyImageOutputs([][64]byte{out1, out2})
+
+	t.Log("=== Key image session (parties 1,2) ===")
+	results12 := runKeyImageSession(t, keyShares, []int{0, 1}, outputsData)
+	if len(results12[0]) != 64 {
+		t.Fatalf("expected 64 bytes (2 key images), got %d", len(results12[0]))
+	}
+	if !bytes.Equal(results12[0], results12[1]) {
+		t.Fatal("key images from different parties should match")
+	}
+	t.Logf("key image 1: %x", results12[0][:32])
+	t.Logf("key image 2: %x", results12[0][32:])
+
+	t.Log("=== Key image session (parties 2,3) ===")
+	results23 := runKeyImageSession(t, keyShares, []int{1, 2}, outputsData)
+	if !bytes.Equal(results12[0], results23[0]) {
+		t.Fatal("key images should be the same regardless of signer set")
+	}
+
+	t.Log("=== Key image session passed ===")
 }
 
 func TestCKD(t *testing.T) {

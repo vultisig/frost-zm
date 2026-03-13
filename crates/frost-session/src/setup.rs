@@ -34,6 +34,12 @@ pub struct KeyImportSetup {
     pub account_index: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct KeyImageSetup {
+    pub base: SetupMsg,
+    pub outputs_data: Vec<u8>,
+}
+
 impl SetupMsg {
     pub fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -167,6 +173,25 @@ impl KeyImportSetup {
         pos += secret_len;
         let account_index = read_u32(data, &mut pos)?;
         Ok(Self { base, seed_holder_id, secret_data, account_index })
+    }
+}
+
+impl KeyImageSetup {
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = self.base.encode();
+        buf.extend_from_slice(&(self.outputs_data.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&self.outputs_data);
+        buf
+    }
+
+    pub fn decode(data: &[u8]) -> Result<Self, lib_error> {
+        let (base, mut pos) = SetupMsg::decode(data)?;
+        let outputs_len = read_u32(data, &mut pos)? as usize;
+        if pos + outputs_len > data.len() {
+            return Err(lib_error::LIB_SERIALIZATION_ERROR);
+        }
+        let outputs_data = data[pos..pos + outputs_len].to_vec();
+        Ok(Self { base, outputs_data })
     }
 }
 

@@ -6,9 +6,10 @@ import {
   fromt_keyshare_birthday,
   fromt_keyshare_network,
   fromt_compute_key_image,
+  fromt_outputs_for_key_image,
 } from "./wasm.js";
-import { scan } from "./scanner.js";
-import type { MoneroKeys, ScanResult, ScanProgress } from "./types.js";
+import { scan, scanOutputs, encodeOutputsForKeyImage, encodeOutputsWithAmounts, filterSpentOutputs } from "./scanner.js";
+import type { MoneroKeys, ScanResult, ScanProgress, ScannedOutputs } from "./types.js";
 
 export class FromtWallet {
   private keyShare: Uint8Array;
@@ -75,6 +76,44 @@ export class FromtWallet {
   async getBalance(daemonUrl: string, privateSpendKey?: Uint8Array): Promise<number> {
     const result = await this.scanBalance(daemonUrl, undefined, privateSpendKey);
     return result.balance;
+  }
+
+  async scanForKeyImageCeremony(
+    daemonUrl: string,
+    onProgress?: (progress: ScanProgress) => void,
+  ): Promise<ScannedOutputs> {
+    const viewKey = fromt_derive_view_key(this.keyShare);
+    const viewKeyHex = toHex(viewKey);
+    const address = this.getAddress();
+
+    return scanOutputs({
+      daemonUrl,
+      primaryAddress: address,
+      privateViewKey: viewKeyHex,
+      restoreHeight: this.getBirthday(),
+      networkType: this.getNetworkName(),
+      onProgress,
+    });
+  }
+
+  encodeOutputsForKeyImage(outputs: ScannedOutputs["outputs"]): Uint8Array {
+    return encodeOutputsForKeyImage(outputs);
+  }
+
+  encodeOutputsWithAmounts(outputs: ScannedOutputs["outputs"]): Uint8Array {
+    return encodeOutputsWithAmounts(outputs);
+  }
+
+  outputsForKeyImageFromBinary(outputsData: Uint8Array): Uint8Array {
+    return fromt_outputs_for_key_image(outputsData);
+  }
+
+  async filterSpentOutputs(
+    daemonUrl: string,
+    outputs: ScannedOutputs["outputs"],
+    keyImages: Uint8Array,
+  ): Promise<ScanResult> {
+    return filterSpentOutputs(daemonUrl, outputs, keyImages);
   }
 }
 

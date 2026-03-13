@@ -1,5 +1,6 @@
 import moneroTs from "monero-ts";
-import type { ScanResult, ScanProgress, FoundOutput } from "./types.js";
+import type { ScanResult, ScanProgress, FoundOutput, ScannedOutputs } from "./types.js";
+import { MoneroRpcClient } from "./monero-rpc.js";
 
 export interface ScanOptions {
   daemonUrl: string;
@@ -107,6 +108,143 @@ function mapWalletOutput(output: {
     outputKey: hexToBytes(output.getStealthPublicKey()),
     globalIndex,
   };
+}
+
+export async function scanOutputs(options: Omit<ScanOptions, "privateSpendKey" | "rescanSpent">): Promise<ScannedOutputs> {
+  const {
+    daemonUrl,
+    primaryAddress,
+    privateViewKey,
+    restoreHeight,
+    networkType = "mainnet",
+  } = options;
+
+  const netType =
+    networkType === "stagenet"
+      ? moneroTs.MoneroNetworkType.STAGENET
+      : networkType === "testnet"
+        ? moneroTs.MoneroNetworkType.TESTNET
+        : moneroTs.MoneroNetworkType.MAINNET;
+
+  const wallet = await moneroTs.createWalletFull({
+    networkType: netType,
+    primaryAddress,
+    privateViewKey,
+    restoreHeight,
+    server: { uri: daemonUrl },
+    proxyToWorker: false,
+  });
+
+  if (options.onProgress) {
+    const progressCb = options.onProgress;
+    const listener = new moneroTs.MoneroWalletListener();
+    listener.onSyncProgress = async (
+      height: number,
+      startHeight: number,
+      endHeight: number,
+      _percentDone: number,
+      _message: string,
+    ) => {
+      progressCb({
+        scannedBlocks: height - startHeight,
+        totalBlocks: endHeight - startHeight,
+      });
+    };
+    await wallet.sync(listener);
+  } else {
+    await wallet.sync();
+  }
+
+  const chainHeight = await wallet.getHeight();
+  const walletOutputs = await wallet.getOutputs();
+  const outputs = walletOutputs.map(mapWalletOutput);
+
+  await wallet.close();
+
+  return { outputs, chainHeight };
+}
+
+export function encodeOutputsForKeyImage(outputs: FoundOutput[]): Uint8Array {
+  const count = outputs.length;
+  const buf = new Uint8Array(4 + count * 64);
+  const view = new DataView(buf.buffer);
+  view.setUint32(0, count, true);
+
+  for (let i = 0; i < count; i++) {
+    const off = 4 + i * 64;
+    buf.set(outputs[i].outputKey.slice(0, 32), off);
+    buf.set(outputs[i].keyOffset.slice(0, 32), off + 32);
+  }
+
+  return buf;
+}
+
+export function encodeOutputsWithAmounts(outputs: FoundOutput[]): Uint8Array {
+  const count = outputs.length;
+  const buf = new Uint8Array(4 + count * 72);
+  const view = new DataView(buf.buffer);
+  view.setUint32(0, count, true);
+
+  for (let i = 0; i < count; i++) {
+    const off = 4 + i * 72;
+    buf.set(outputs[i].outputKey.slice(0, 32), off);
+    buf.set(outputs[i].keyOffset.slice(0, 32), off + 32);
+    const lo = outputs[i].amount & 0xffffffff;
+    const hi = Math.floor(outputs[i].amount / 0x100000000) & 0xffffffff;
+    view.setUint32(off + 64, lo, true);
+    view.setUint32(off + 68, hi, true);
+  }
+
+  return buf;
+}
+
+export async function filterSpentOutputs(
+  daemonUrl: string,
+  outputs: FoundOutput[],
+  keyImages: Uint8Array,
+): Promise<ScanResult> {
+  if (keyImages.length !== outputs.length * 32) {
+    throw new Error(`expected ${outputs.length * 32} bytes of key images, got ${keyImages.length}`);
+  }
+
+  const kiHex: string[] = [];
+  for (let i = 0; i < outputs.length; i++) {
+    const ki = keyImages.slice(i * 32, (i + 1) * 32);
+    kiHex.push(bytesToHex(ki));
+  }
+
+  const rpc = new MoneroRpcClient(daemonUrl);
+  const spentFlags = await rpc.isKeyImageSpent(kiHex);
+
+  const unspent: FoundOutput[] = [];
+  let spentCount = 0;
+  for (let i = 0; i < outputs.length; i++) {
+    if (spentFlags[i]) {
+      spentCount++;
+    } else {
+      unspent.push(outputs[i]);
+    }
+  }
+
+  let balance = 0;
+  for (const out of unspent) {
+    balance += out.amount;
+  }
+
+  return {
+    outputs: unspent,
+    balance,
+    totalOutputs: outputs.length,
+    spentOutputs: spentCount,
+    chainHeight: 0,
+    scannedHeight: 0,
+  };
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function hexToBytes(value: string | undefined): Uint8Array {

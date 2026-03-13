@@ -46,6 +46,19 @@ lib_error fromt_scan_balance(const go_slice *key_share,
                               uint64_t *out_balance,
                               uint32_t *out_num_outputs);
 
+/* Scan Outputs */
+lib_error fromt_scan_outputs(const go_slice *key_share,
+                              const go_slice *daemon_url,
+                              uint64_t birthday,
+                              tss_buffer *out_data);
+
+/* Filter Spent Outputs */
+lib_error fromt_filter_spent_outputs(const go_slice *daemon_url,
+                                      const go_slice *outputs_data,
+                                      const go_slice *key_images,
+                                      uint64_t *out_balance,
+                                      uint32_t *out_num_outputs);
+
 /* Spend Prepare */
 lib_error fromt_spend_prepare(const go_slice *key_share,
                                const go_slice *daemon_url,

@@ -16,5 +16,6 @@ export type {
   CompactTx,
   CompactOutput,
   CompactSpend,
+  LightwalletTransport,
 } from "./types.js";
 export type { ScanOptions } from "./scanner.js";

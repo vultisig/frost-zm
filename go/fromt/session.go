@@ -402,3 +402,92 @@ func ReshareSessionResult(session *SessionHandle) (keyPackage []byte, pubKeyPack
 func ReshareSessionFree(session *SessionHandle) error {
 	return toError(int(C.fromt_reshare_session_free(session.h)))
 }
+
+// Key Image Session
+
+func KeyImageSetupMsgNew(parties []PartyInfo, outputs []byte) ([]byte, error) {
+	pd := encodeParties(parties)
+	pdSlice, p1 := cGoSlice(pd)
+	defer p1.Unpin()
+	outSlice, p2 := cGoSlice(outputs)
+	defer p2.Unpin()
+
+	var out C.tss_buffer
+
+	rc := C.fromt_key_image_setupmsg_new(&pdSlice, &outSlice, &out)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&out), nil
+}
+
+func KeyImageSessionFromSetup(setup, myPartyName, keyShare []byte) (*SessionHandle, error) {
+	setupSlice, p1 := cGoSlice(setup)
+	defer p1.Unpin()
+	nameSlice, p2 := cGoSlice(myPartyName)
+	defer p2.Unpin()
+	ksSlice, p3 := cGoSlice(keyShare)
+	defer p3.Unpin()
+
+	var handle C.Handle
+
+	rc := C.fromt_key_image_session_from_setup(&setupSlice, &nameSlice, &ksSlice, &handle)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return &SessionHandle{h: handle}, nil
+}
+
+func KeyImageSessionFeed(session *SessionHandle, msg []byte) (bool, error) {
+	msgSlice, p := cGoSlice(msg)
+	defer p.Unpin()
+	var finished C.int32_t
+
+	rc := C.fromt_key_image_session_feed(session.h, &msgSlice, &finished)
+	err := toError(int(rc))
+	if err != nil {
+		return false, err
+	}
+	return finished != 0, nil
+}
+
+func KeyImageSessionTakeMsg(session *SessionHandle) ([]byte, error) {
+	var out C.tss_buffer
+
+	rc := C.fromt_key_image_session_take_msg(session.h, &out)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&out), nil
+}
+
+func KeyImageSessionMsgReceiver(session *SessionHandle, msg []byte, index int) ([]byte, error) {
+	msgSlice, p := cGoSlice(msg)
+	defer p.Unpin()
+	var out C.tss_buffer
+
+	rc := C.fromt_key_image_session_msg_receiver(session.h, &msgSlice, C.uint32_t(index), &out)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&out), nil
+}
+
+func KeyImageSessionResult(session *SessionHandle) ([]byte, error) {
+	var out C.tss_buffer
+
+	rc := C.fromt_key_image_session_result(session.h, &out)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&out), nil
+}
+
+func KeyImageSessionFree(session *SessionHandle) error {
+	return toError(int(C.fromt_key_image_session_free(session.h)))
+}

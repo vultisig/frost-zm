@@ -328,6 +328,13 @@ lib_error frozt_sign_session_from_setup(const go_slice *setup_data,
                                          const go_slice *pub_key_package,
                                          Handle *out_handle);
 
+lib_error frozt_sign_session_from_setup_with_alpha(const go_slice *setup_data,
+                                                    const go_slice *my_party_name,
+                                                    const go_slice *key_package,
+                                                    const go_slice *pub_key_package,
+                                                    const go_slice *alpha,
+                                                    Handle *out_handle);
+
 lib_error frozt_sign_session_feed(Handle session,
                                    const go_slice *msg,
                                    int32_t *out_finished);

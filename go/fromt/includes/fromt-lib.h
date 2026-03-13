@@ -118,6 +118,17 @@ lib_error fromt_ckd_part1(const go_slice *key_share, uint32_t account,
 lib_error fromt_ckd_part2(Handle state, const go_slice *r1_packages,
                           tss_buffer *out_child_key_share);
 
+/* Key Image */
+lib_error fromt_key_image_part1(const go_slice *key_share,
+                                 const go_slice *outputs,
+                                 const go_slice *signer_ids,
+                                 Handle *out_state,
+                                 tss_buffer *out_partials);
+
+lib_error fromt_key_image_part2(Handle state,
+                                 const go_slice *r1_packages,
+                                 tss_buffer *out_key_images);
+
 /* Address */
 lib_error fromt_derive_address(const go_slice *key_share,
                                tss_buffer *out_address);
@@ -205,37 +216,6 @@ lib_error fromt_dkg_session_result(Handle session,
 
 lib_error fromt_dkg_session_free(Handle session);
 
-/* Session-based Key Import */
-lib_error fromt_key_import_setupmsg_new(uint16_t max_signers,
-                                         uint16_t min_signers,
-                                         const go_slice *parties_data,
-                                         uint8_t network,
-                                         uint64_t birthday,
-                                         uint16_t seed_holder_id,
-                                         const go_slice *spend_key,
-                                         tss_buffer *out_setup);
-
-lib_error fromt_key_import_session_from_setup(const go_slice *setup_data,
-                                               const go_slice *my_party_name,
-                                               Handle *out_handle);
-
-lib_error fromt_key_import_session_feed(Handle session,
-                                         const go_slice *msg,
-                                         int32_t *out_finished);
-
-lib_error fromt_key_import_session_take_msg(Handle session,
-                                             tss_buffer *out_message);
-
-lib_error fromt_key_import_session_msg_receiver(Handle session,
-                                                 const go_slice *msg,
-                                                 uint32_t index,
-                                                 tss_buffer *out_receiver);
-
-lib_error fromt_key_import_session_result(Handle session,
-                                           tss_buffer *out_bundle);
-
-lib_error fromt_key_import_session_free(Handle session);
-
 /* Session-based Signing */
 lib_error fromt_sign_setupmsg_new(const go_slice *msg_to_sign,
                                    const go_slice *parties_data,
@@ -294,5 +274,63 @@ lib_error fromt_reshare_session_result(Handle session,
                                         tss_buffer *out_pub_key_package);
 
 lib_error fromt_reshare_session_free(Handle session);
+
+/* Session-based Key Import */
+lib_error fromt_key_import_setupmsg_new(uint16_t max_signers,
+                                         uint16_t min_signers,
+                                         const go_slice *parties_data,
+                                         uint8_t network,
+                                         uint64_t birthday,
+                                         uint16_t seed_holder_id,
+                                         const go_slice *spend_key,
+                                         tss_buffer *out_setup);
+
+lib_error fromt_key_import_session_from_setup(const go_slice *setup_data,
+                                               const go_slice *my_party_name,
+                                               Handle *out_handle);
+
+lib_error fromt_key_import_session_feed(Handle session,
+                                         const go_slice *msg,
+                                         int32_t *out_finished);
+
+lib_error fromt_key_import_session_take_msg(Handle session,
+                                             tss_buffer *out_message);
+
+lib_error fromt_key_import_session_msg_receiver(Handle session,
+                                                 const go_slice *msg,
+                                                 uint32_t index,
+                                                 tss_buffer *out_receiver);
+
+lib_error fromt_key_import_session_result(Handle session,
+                                           tss_buffer *out_bundle);
+
+lib_error fromt_key_import_session_free(Handle session);
+
+/* Session-based Key Image */
+lib_error fromt_key_image_setupmsg_new(const go_slice *parties_data,
+                                        const go_slice *outputs,
+                                        tss_buffer *out_setup);
+
+lib_error fromt_key_image_session_from_setup(const go_slice *setup_data,
+                                              const go_slice *my_party_name,
+                                              const go_slice *key_share,
+                                              Handle *out_handle);
+
+lib_error fromt_key_image_session_feed(Handle session,
+                                        const go_slice *msg,
+                                        int32_t *out_finished);
+
+lib_error fromt_key_image_session_take_msg(Handle session,
+                                            tss_buffer *out_message);
+
+lib_error fromt_key_image_session_msg_receiver(Handle session,
+                                                const go_slice *msg,
+                                                uint32_t index,
+                                                tss_buffer *out_receiver);
+
+lib_error fromt_key_image_session_result(Handle session,
+                                          tss_buffer *out_key_images);
+
+lib_error fromt_key_image_session_free(Handle session);
 
 #endif /* FROMT_LIB_H */

@@ -93,6 +93,60 @@ async fn check_key_images_spent(
     Ok(flags)
 }
 
+#[cfg(feature = "rpc")]
+pub async fn filter_spent_outputs(
+    daemon_url: &str,
+    outputs_data: &[u8],
+    key_images_data: &[u8],
+) -> Result<(u64, u32), lib_error> {
+    if outputs_data.len() < 4 {
+        return Err(lib_error::LIB_SERIALIZATION_ERROR);
+    }
+    let count = u32::from_le_bytes(
+        outputs_data[0..4].try_into().map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?,
+    ) as usize;
+    let expected_outputs_len = 4 + count * 72;
+    if outputs_data.len() < expected_outputs_len {
+        return Err(lib_error::LIB_SERIALIZATION_ERROR);
+    }
+    let expected_ki_len = count * 32;
+    if key_images_data.len() < expected_ki_len {
+        return Err(lib_error::LIB_SERIALIZATION_ERROR);
+    }
+
+    let mut key_images: Vec<[u8; 32]> = Vec::with_capacity(count);
+    for i in 0..count {
+        let mut ki = [0u8; 32];
+        ki.copy_from_slice(&key_images_data[i * 32..(i + 1) * 32]);
+        key_images.push(ki);
+    }
+
+    let spent_flags = check_key_images_spent(daemon_url, &key_images).await?;
+
+    let mut balance = 0u64;
+    let mut num_unspent = 0u32;
+    for i in 0..count {
+        let spent = spent_flags.get(i).copied().unwrap_or(false);
+        if !spent {
+            let offset = 4 + i * 72 + 64;
+            let amount = u64::from_le_bytes(
+                outputs_data[offset..offset + 8]
+                    .try_into()
+                    .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?,
+            );
+            balance += amount;
+            num_unspent += 1;
+        }
+    }
+
+    eprintln!(
+        "[fromt] filter_spent_outputs: {} total, {} unspent, balance={}",
+        count, num_unspent, balance
+    );
+
+    Ok((balance, num_unspent))
+}
+
 pub fn convert_keyshare(
     bundle: &KeyShareBundle,
 ) -> Result<ThresholdKeys<dalek_ff_group::Ed25519>, lib_error> {
@@ -437,6 +491,57 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
         total_balance, total_balance as f64 / 1e12, num_outputs);
 
     Ok((total_balance, num_outputs))
+}
+
+#[cfg(feature = "rpc")]
+pub async fn scan_outputs<R: ProvidesBlockchain + ProvidesTransactions + ProvidesOutputs + ExpandToScannableBlock + Sync>(
+    rpc: &R,
+    view_pair: &ViewPair,
+    birthday: u64,
+) -> Result<Vec<u8>, lib_error> {
+    let mut scanner = Scanner::new(view_pair.clone());
+
+    let chain_height = rpc
+        .latest_block_number()
+        .await
+        .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+    let start = birthday as usize;
+    let end = chain_height;
+
+    let mut owned_outputs: Vec<WalletOutput> = Vec::new();
+
+    for height in start..=end {
+        let block = rpc
+            .block_by_number(height)
+            .await
+            .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+        let scannable = rpc
+            .expand_to_scannable_block(block)
+            .await
+            .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+        let scanned = scanner.scan(scannable).map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+        let unlocked = scanned.not_additionally_locked();
+        for output in unlocked {
+            owned_outputs.push(output);
+        }
+    }
+
+    let count = owned_outputs.len() as u32;
+    let mut buf = Vec::with_capacity(4 + owned_outputs.len() * 72);
+    buf.extend_from_slice(&count.to_le_bytes());
+    for output in &owned_outputs {
+        let output_key = output.key().compress().to_bytes();
+        let key_offset: [u8; 32] = <[u8; 32]>::from(output.key_offset());
+        let amount = output.commitment().amount;
+        buf.extend_from_slice(&output_key);
+        buf.extend_from_slice(&key_offset);
+        buf.extend_from_slice(&amount.to_le_bytes());
+    }
+
+    Ok(buf)
 }
 
 pub fn spend_preprocess(

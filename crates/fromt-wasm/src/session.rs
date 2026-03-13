@@ -11,7 +11,7 @@ use frost_session::{
     message,
     relay::FrostChannel,
     session::{Ceremony, Protocol},
-    setup::{KeyImportSetup, PartyEntry, SetupMsg, SignSetup, ReshareSetup},
+    setup::{KeyImportSetup, KeyImageSetup, PartyEntry, SetupMsg, SignSetup, ReshareSetup},
 };
 
 use crate::to_js_err;
@@ -544,6 +544,91 @@ impl FromtReshareSession {
     }
 }
 
+// === Key Image Session ===
+
+async fn key_image_session_run(
+    key_share_data: Vec<u8>,
+    outputs_data: Vec<u8>,
+    signer_ids: Vec<u16>,
+    ch: &FrostChannel,
+) -> Result<Vec<u8>, fromtlib::errors::lib_error> {
+    use fromtlib::ceremony::key_image;
+
+    let num_signers = signer_ids.len();
+
+    let (state, partials) = key_image::key_image_part1(&key_share_data, &outputs_data, &signer_ids)?;
+    ch.broadcast(partials).await;
+
+    let mut r1_packages = Vec::new();
+    for _ in 0..(num_signers - 1) {
+        let (sender_id, data) = ch.recv().await;
+        r1_packages.push((sender_id, data));
+    }
+
+    key_image::key_image_part2(state, &r1_packages)
+}
+
+#[wasm_bindgen]
+pub struct FromtKeyImageSession {
+    protocol: Box<dyn Ceremony<Result<Vec<u8>, fromtlib::errors::lib_error>>>,
+    setup: SetupMsg,
+    my_id: u16,
+}
+
+#[wasm_bindgen]
+impl FromtKeyImageSession {
+    #[wasm_bindgen(js_name = "fromSetup")]
+    pub fn from_setup(setup_bytes: &[u8], my_party_name: &str, key_share: &[u8]) -> Result<FromtKeyImageSession, JsValue> {
+        let ki_setup = KeyImageSetup::decode(setup_bytes).map_err(to_js_err)?;
+        let setup = ki_setup.base;
+        let my_id = setup.frost_id_by_name(my_party_name.as_bytes())
+            .ok_or_else(|| JsValue::from_str("party name not found in setup"))?;
+
+        let key_share_data = key_share.to_vec();
+        let outputs_data = ki_setup.outputs_data;
+        let signer_ids: Vec<u16> = setup.parties.iter().map(|p| p.frost_id).collect();
+
+        let protocol: Box<dyn Ceremony<Result<Vec<u8>, _>>> =
+            Box::new(Protocol::start(move |ch| async move {
+                key_image_session_run(key_share_data, outputs_data, signer_ids, &ch).await
+            }));
+
+        Ok(FromtKeyImageSession { protocol, setup, my_id })
+    }
+
+    pub fn feed(&mut self, msg: &[u8]) -> bool {
+        self.protocol.feed(msg.to_vec())
+    }
+
+    #[wasm_bindgen(js_name = "takeMsg")]
+    pub fn take_msg(&mut self) -> Option<js_sys::Uint8Array> {
+        self.protocol.take_msg().map(|m| js_sys::Uint8Array::from(m.as_slice()))
+    }
+
+    #[wasm_bindgen(js_name = "msgReceiver")]
+    pub fn msg_receiver(&self, msg: &[u8], index: u32) -> Option<String> {
+        let recipient = message::read_recipient(msg);
+        if recipient == 0 {
+            let others = self.setup.other_party_ids(self.my_id);
+            others.get(index as usize)
+                .and_then(|&fid| self.setup.party_name(fid))
+                .map(|n| String::from_utf8_lossy(n).into_owned())
+        } else if index == 0 {
+            self.setup.party_name(recipient)
+                .map(|n| String::from_utf8_lossy(n).into_owned())
+        } else {
+            None
+        }
+    }
+
+    pub fn result(&mut self) -> Result<js_sys::Uint8Array, JsValue> {
+        let key_images = self.protocol.result()
+            .ok_or_else(|| JsValue::from_str("session not ready"))?
+            .map_err(to_js_err)?;
+        Ok(js_sys::Uint8Array::from(key_images.as_slice()))
+    }
+}
+
 // === Setup Message Helpers ===
 
 fn decode_parties_wasm(data: &[u8]) -> Result<Vec<PartyEntry>, JsError> {
@@ -660,6 +745,20 @@ pub fn key_import_setup_msg_new(
     buf.push(network);
     buf.extend_from_slice(&birthday.to_le_bytes());
     Ok(js_sys::Uint8Array::from(buf.as_slice()))
+}
+
+#[wasm_bindgen(js_name = "fromtKeyImageSetupMsgNew")]
+pub fn key_image_setup_msg_new(
+    parties_data: &[u8],
+    outputs: &[u8],
+) -> Result<js_sys::Uint8Array, JsError> {
+    let parties = decode_parties_wasm(parties_data)?;
+    let num = parties.len() as u16;
+    let setup = KeyImageSetup {
+        base: SetupMsg { max_signers: num, min_signers: num, parties },
+        outputs_data: outputs.to_vec(),
+    };
+    Ok(js_sys::Uint8Array::from(setup.encode().as_slice()))
 }
 
 // === Codec / Identifier Utilities ===

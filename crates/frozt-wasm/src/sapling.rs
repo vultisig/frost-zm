@@ -1,19 +1,21 @@
 use ff::{Field, PrimeField};
 use group::GroupEncoding;
 use sapling_crypto::{
+    bundle::{GrothProofBytes, OutputDescription},
     constants::PROOF_GENERATION_KEY_GENERATOR,
-    keys::SaplingIvk,
+    keys::{OutgoingViewingKey, SaplingIvk},
     note::ExtractedNoteCommitment,
     note_encryption::{
         try_sapling_compact_note_decryption, try_sapling_note_decryption,
-        CompactOutputDescription, PreparedIncomingViewingKey, SaplingDomain, Zip212Enforcement,
+        try_sapling_output_recovery, CompactOutputDescription, PreparedIncomingViewingKey,
+        SaplingDomain, Zip212Enforcement,
     },
-    value::NoteValue,
+    value::{NoteValue, ValueCommitment},
     zip32::DiversifiableFullViewingKey,
     Diversifier, Note, Rseed,
 };
 use wasm_bindgen::prelude::*;
-use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE};
+use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE, OUT_CIPHERTEXT_SIZE};
 use zeroize::Zeroize;
 use crate::{to_js_err, J};
 
@@ -308,6 +310,103 @@ pub fn frozt_sapling_compute_nullifier(
 
     let nf = note.nf(&dfvk.fvk().vk.nk, position);
     Ok(nf.0.to_vec())
+}
+
+#[wasm_bindgen]
+pub struct WasmRecoveredOutput {
+    address: String,
+    value: u64,
+    memo: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl WasmRecoveredOutput {
+    #[wasm_bindgen(getter)]
+    pub fn address(&self) -> String {
+        self.address.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn value(&self) -> u64 {
+        self.value
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn memo(&self) -> Vec<u8> {
+        self.memo.clone()
+    }
+}
+
+#[wasm_bindgen]
+pub fn frozt_sapling_try_output_recovery(
+    ovk: &[u8],
+    cv: &[u8],
+    cmu: &[u8],
+    ephemeral_key: &[u8],
+    enc_ciphertext: &[u8],
+    out_ciphertext: &[u8],
+    height: u64,
+) -> Result<JsValue, JsError> {
+    if ovk.len() != 32 {
+        return Err(JsError::new("ovk must be 32 bytes"));
+    }
+    if cv.len() != 32 || cmu.len() != 32 || ephemeral_key.len() != 32 {
+        return Err(JsError::new("cv, cmu, and ephemeral_key must be 32 bytes"));
+    }
+    if enc_ciphertext.len() != ENC_CIPHERTEXT_SIZE {
+        return Err(JsError::new("enc_ciphertext must be 580 bytes"));
+    }
+    if out_ciphertext.len() != OUT_CIPHERTEXT_SIZE {
+        return Err(JsError::new("out_ciphertext must be 80 bytes"));
+    }
+
+    let ovk_bytes: [u8; 32] = ovk[..32].try_into().unwrap();
+    let ovk = OutgoingViewingKey(ovk_bytes);
+
+    let cv_bytes: [u8; 32] = cv[..32].try_into().unwrap();
+    let cv: Option<ValueCommitment> = ValueCommitment::from_bytes_not_small_order(&cv_bytes).into();
+    let cv = cv.ok_or_else(|| JsError::new("invalid cv"))?;
+
+    let cmu_bytes: [u8; 32] = cmu[..32].try_into().unwrap();
+    let extracted_cmu: Option<ExtractedNoteCommitment> =
+        ExtractedNoteCommitment::from_bytes(&cmu_bytes).into();
+    let extracted_cmu = extracted_cmu.ok_or_else(|| JsError::new("invalid cmu"))?;
+
+    let epk_bytes: [u8; 32] = ephemeral_key[..32].try_into().unwrap();
+
+    let mut enc_ct = [0u8; ENC_CIPHERTEXT_SIZE];
+    enc_ct.copy_from_slice(enc_ciphertext);
+
+    let mut out_ct = [0u8; OUT_CIPHERTEXT_SIZE];
+    out_ct.copy_from_slice(out_ciphertext);
+
+    let output_desc = OutputDescription::from_parts(
+        cv,
+        extracted_cmu,
+        EphemeralKeyBytes(epk_bytes),
+        enc_ct,
+        out_ct,
+        [0u8; 192], // dummy proof, not needed for decryption
+    );
+
+    let zip212 = zip212_for_height(height);
+    let result = try_sapling_output_recovery(&ovk, &output_desc, zip212);
+
+    match result {
+        Some((note, addr, memo)) => {
+            let hrp = bech32::Hrp::parse("zs")
+                .map_err(|e| JsError::new(&format!("bech32 hrp: {}", e)))?;
+            let encoded = bech32::encode::<bech32::Bech32>(hrp, &addr.to_bytes())
+                .map_err(|e| JsError::new(&format!("bech32 encode: {}", e)))?;
+
+            Ok(JsValue::from(WasmRecoveredOutput {
+                address: encoded,
+                value: note.value().inner(),
+                memo: memo.to_vec(),
+            }))
+        }
+        None => Ok(JsValue::NULL),
+    }
 }
 
 #[cfg(test)]

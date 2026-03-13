@@ -17,7 +17,7 @@ use frost_session::{
     message,
     relay::FrostChannel,
     session::{Ceremony, Protocol},
-    setup::{SetupMsg, SignSetup, ReshareSetup, KeyImportSetup},
+    setup::{SetupMsg, SignSetup, ReshareSetup, KeyImportSetup, KeyImageSetup},
 };
 
 type E = Ed25519Sha512;
@@ -862,6 +862,165 @@ pub extern "C" fn fromt_key_import_session_free(session: Handle) -> lib_error {
     })
 }
 
+// === Key Image Session ===
+
+struct KeyImageSessionState {
+    protocol: Box<dyn Ceremony<Result<Vec<u8>, lib_error>> + Send>,
+    setup: SetupMsg,
+    my_id: u16,
+}
+
+async fn key_image_session_run(
+    key_share_data: Vec<u8>,
+    outputs_data: Vec<u8>,
+    signer_ids: Vec<u16>,
+    ch: &FrostChannel,
+) -> Result<Vec<u8>, lib_error> {
+    use crate::ceremony::key_image;
+
+    let num_signers = signer_ids.len();
+
+    let (state, partials) = key_image::key_image_part1(&key_share_data, &outputs_data, &signer_ids)?;
+    ch.broadcast(partials).await;
+
+    let mut r1_packages = Vec::new();
+    for _ in 0..(num_signers - 1) {
+        let (sender_id, data) = ch.recv().await;
+        r1_packages.push((sender_id, data));
+    }
+
+    key_image::key_image_part2(state, &r1_packages)
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_setupmsg_new(
+    parties_data: Option<&go_slice>,
+    outputs: Option<&go_slice>,
+    out_setup: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let pd = parties_data.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out_data = outputs.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_setup.ok_or(lib_error::LIB_NULL_PTR)?;
+        let parties = decode_parties(pd.as_slice())?;
+        let num = parties.len() as u16;
+        let setup = KeyImageSetup {
+            base: SetupMsg { max_signers: num, min_signers: num, parties },
+            outputs_data: out_data.as_slice().to_vec(),
+        };
+        *out = tss_buffer::from_vec(setup.encode());
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_from_setup(
+    setup_data: Option<&go_slice>,
+    my_party_name: Option<&go_slice>,
+    key_share: Option<&go_slice>,
+    out_handle: Option<&mut Handle>,
+) -> lib_error {
+    with_error_handler(|| {
+        let sd = setup_data.ok_or(lib_error::LIB_NULL_PTR)?;
+        let name = my_party_name.ok_or(lib_error::LIB_NULL_PTR)?;
+        let ks = key_share.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_handle.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let ki_setup = KeyImageSetup::decode(sd.as_slice())?;
+        let setup = ki_setup.base;
+        let my_id = setup.frost_id_by_name(name.as_slice())
+            .ok_or(lib_error::LIB_INVALID_IDENTIFIER)?;
+
+        let key_share_data = ks.as_slice().to_vec();
+        let outputs_data = ki_setup.outputs_data;
+        let signer_ids: Vec<u16> = setup.parties.iter().map(|p| p.frost_id).collect();
+
+        let protocol: Box<dyn Ceremony<Result<Vec<u8>, lib_error>> + Send> =
+            Box::new(Protocol::start(move |ch| async move {
+                key_image_session_run(key_share_data, outputs_data, signer_ids, &ch).await
+            }));
+
+        let state = KeyImageSessionState { protocol, setup, my_id };
+        *out = Handle::allocate(state)?;
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_feed(
+    session: Handle,
+    msg: Option<&go_slice>,
+    out_finished: Option<&mut i32>,
+) -> lib_error {
+    with_error_handler(|| {
+        let msg_data = msg.ok_or(lib_error::LIB_NULL_PTR)?;
+        let finished = out_finished.ok_or(lib_error::LIB_NULL_PTR)?;
+        let mut state = session.get::<KeyImageSessionState>()?;
+        let done = state.protocol.feed(msg_data.as_slice().to_vec());
+        *finished = if done { 1 } else { 0 };
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_take_msg(
+    session: Handle,
+    out_message: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let out = out_message.ok_or(lib_error::LIB_NULL_PTR)?;
+        let mut state = session.get::<KeyImageSessionState>()?;
+        match state.protocol.take_msg() {
+            Some(msg) => *out = tss_buffer::from_vec(msg),
+            None => *out = tss_buffer::empty(),
+        }
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_msg_receiver(
+    session: Handle,
+    msg: Option<&go_slice>,
+    index: u32,
+    out_receiver: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let msg_data = msg.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_receiver.ok_or(lib_error::LIB_NULL_PTR)?;
+        let state = session.get::<KeyImageSessionState>()?;
+        match msg_receiver_impl(&state.setup, state.my_id, msg_data.as_slice(), index) {
+            Some(name) => *out = tss_buffer::from_vec(name),
+            None => *out = tss_buffer::empty(),
+        }
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_result(
+    session: Handle,
+    out_key_images: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let out = out_key_images.ok_or(lib_error::LIB_NULL_PTR)?;
+        let mut state = session.take::<KeyImageSessionState>()?;
+        let key_images = state.protocol.result()
+            .ok_or(lib_error::LIB_SESSION_NOT_READY)?
+            .map_err(|e| e)?;
+        *out = tss_buffer::from_vec(key_images);
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_key_image_session_free(session: Handle) -> lib_error {
+    with_error_handler(|| {
+        let _ = session.take::<KeyImageSessionState>()?;
+        Ok(())
+    })
+}
+
 // === Helpers ===
 
 fn decode_parties(data: &[u8]) -> Result<Vec<frost_session::setup::PartyEntry>, lib_error> {
@@ -1294,5 +1453,74 @@ mod tests {
 
         assert_eq!(b0.network, TEST_NETWORK);
         assert_eq!(b0.birthday, TEST_BIRTHDAY);
+    }
+
+    #[test]
+    fn test_session_key_image_2x3() {
+        use crate::ceremony::key_image::{KeyImageOutput, encode_outputs};
+
+        let bundles = run_n_party_dkg(3, 2);
+
+        let out1 = KeyImageOutput {
+            output_key: {
+                let mut k = [0u8; 32]; k[0] = 7; k
+            },
+            key_offset: {
+                let mut k = [0u8; 32]; k[0] = 49; k
+            },
+        };
+        let out2 = KeyImageOutput {
+            output_key: {
+                let mut k = [0u8; 32]; k[0] = 13; k
+            },
+            key_offset: {
+                let mut k = [0u8; 32]; k[0] = 55; k
+            },
+        };
+        let outputs_data = encode_outputs(&[out1, out2]);
+
+        let parties = vec![
+            PartyEntry { frost_id: 1, name: b"party-1".to_vec() },
+            PartyEntry { frost_id: 2, name: b"party-2".to_vec() },
+        ];
+        let ki_setup = KeyImageSetup {
+            base: SetupMsg { max_signers: 2, min_signers: 2, parties },
+            outputs_data: outputs_data.clone(),
+        };
+        let setup_bytes = ki_setup.encode();
+
+        let sessions: Vec<_> = [0usize, 1].iter().map(|&i| {
+            let party_id = (i + 1) as u16;
+            let my_name = format!("party-{}", party_id);
+            let setup_slice = go_slice::from(setup_bytes.as_slice());
+            let name_bytes = my_name.into_bytes();
+            let name_slice = go_slice::from(name_bytes.as_slice());
+            let ks_slice = go_slice::from(bundles[i].as_slice());
+
+            let mut handle = Handle::null();
+            let res = fromt_key_image_session_from_setup(
+                Some(&setup_slice), Some(&name_slice), Some(&ks_slice), Some(&mut handle),
+            );
+            assert_eq!(res, lib_error::LIB_OK, "key_image session_from_setup failed for party {}", party_id);
+            (party_id, handle)
+        }).collect();
+
+        let finished = run_session_loop_generic(
+            &sessions,
+            fromt_key_image_session_feed,
+            fromt_key_image_session_take_msg,
+        );
+        assert!(finished.iter().all(|f| *f), "not all parties finished key image");
+
+        let mut results = Vec::new();
+        for (_id, handle) in &sessions {
+            let mut ki_buf = tss_buffer::empty();
+            let res = fromt_key_image_session_result(*handle, Some(&mut ki_buf));
+            assert_eq!(res, lib_error::LIB_OK);
+            results.push(ki_buf.into_vec());
+        }
+
+        assert_eq!(results[0].len(), 64);
+        assert_eq!(results[0], results[1]);
     }
 }

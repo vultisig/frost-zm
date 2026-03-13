@@ -2,9 +2,12 @@ import { pbkdf2Sync } from "crypto";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import * as grpc from "@grpc/grpc-js";
+import * as protoLoader from "@grpc/proto-loader";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const wasmPkgDir = join(__dirname, "..", "..", "..", "crates", "frozt-wasm", "pkg");
+const protoDir = join(__dirname, "..", "..", "..", "client", "frozt", "internal", "lightwalletd");
 
 const wasmBytes = readFileSync(join(wasmPkgDir, "frozt_wasm_bg.wasm"));
 const wasmJs = await import(join(wasmPkgDir, "frozt_wasm.js"));
@@ -19,6 +22,67 @@ const {
   frozt_sapling_derive_keys,
 } = wasmJs;
 const { scan } = await import("../dist/scanner.js");
+
+// Native gRPC client adapter for Node.js (zec.rocks doesn't support gRPC-web)
+const packageDefinition = protoLoader.loadSync(
+  join(protoDir, "compact_formats.proto"),
+  { keepCase: true, longs: Number, enums: String, defaults: true, oneofs: true }
+);
+const proto = grpc.loadPackageDefinition(packageDefinition);
+const CompactTxStreamer = proto.cash.z.wallet.sdk.rpc.CompactTxStreamer;
+
+function createNativeGrpcClient(url) {
+  // @grpc/grpc-js expects "host:port", not "https://host:port"
+  const grpcTarget = url.replace(/^https?:\/\//, "");
+  const rpc = new CompactTxStreamer(grpcTarget, grpc.credentials.createSsl());
+
+  return {
+    getLatestBlockHeight() {
+      return new Promise((resolve, reject) => {
+        rpc.GetLatestBlock({}, (err, resp) => err ? reject(err) : resolve(resp.height));
+      });
+    },
+    getBlockRange(startHeight, endHeight) {
+      return new Promise((resolve, reject) => {
+        const blocks = [];
+        const stream = rpc.GetBlockRange({
+          start: { height: startHeight },
+          end: { height: endHeight },
+        });
+        stream.on("data", (block) => {
+          const transactions = (block.vtx || []).map((tx) => ({
+            hash: tx.hash ? Buffer.from(tx.hash) : new Uint8Array(0),
+            spends: (tx.spends || []).map((s) => ({ nf: s.nf ? new Uint8Array(s.nf) : new Uint8Array(0) })),
+            outputs: (tx.outputs || []).map((o) => ({
+              cmu: o.cmu ? new Uint8Array(o.cmu) : new Uint8Array(0),
+              ephemeralKey: o.ephemeralKey ? new Uint8Array(o.ephemeralKey) : new Uint8Array(0),
+              ciphertext: o.ciphertext ? new Uint8Array(o.ciphertext) : new Uint8Array(0),
+            })),
+          }));
+          blocks.push({ height: block.height, transactions });
+        });
+        stream.on("end", () => resolve(blocks));
+        stream.on("error", reject);
+      });
+    },
+    getTransaction(txHash) {
+      return new Promise((resolve, reject) => {
+        rpc.GetTransaction({ hash: txHash }, (err, resp) => {
+          if (err) reject(err);
+          else resolve(new Uint8Array(resp.data));
+        });
+      });
+    },
+    getTreeState(height) {
+      return new Promise((resolve, reject) => {
+        rpc.GetTreeState({ height }, (err, resp) => {
+          if (err) reject(err);
+          else resolve(resp.saplingTree);
+        });
+      });
+    },
+  };
+}
 
 function mnemonicToSeed(mnemonic) {
   return pbkdf2Sync(mnemonic, "mnemonic", 2048, 64, "sha512");
@@ -121,6 +185,8 @@ for (const [suffix, envName] of [["", "FROZT_MNEMONIC"], ["_2", "FROZT_MNEMONIC_
   mnemonics.push({ name: envName, phrase, birthday, expectedAddress });
 }
 
+const nativeClient = createNativeGrpcClient(LIGHTWALLETD);
+
 console.log("=== frozt TS SDK Balance Scan (with spent filtering) ===");
 console.log(`Lightwalletd: ${LIGHTWALLETD}\n`);
 
@@ -140,6 +206,7 @@ for (const m of mnemonics) {
   const start = Date.now();
   const result = await scan({
     lightwalletdUrl: LIGHTWALLETD,
+    client: nativeClient,
     ivk: new Uint8Array(keys.ivk),
     dfvk: new Uint8Array(frozt_sapling_build_dfvk(pubKeyPackage, extras)),
     startHeight: m.birthday,

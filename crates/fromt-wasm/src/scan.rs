@@ -80,6 +80,30 @@ pub fn fromt_compute_key_image(
 }
 
 #[wasm_bindgen]
+pub fn fromt_outputs_for_key_image(outputs_data: &[u8]) -> Result<Vec<u8>, JsValue> {
+    if outputs_data.len() < 4 {
+        return Err(JsValue::from_str("outputs data too short"));
+    }
+    let count = u32::from_le_bytes(
+        outputs_data[0..4]
+            .try_into()
+            .map_err(|_| JsValue::from_str("bad count"))?,
+    ) as usize;
+    let expected = 4 + count * 72;
+    if outputs_data.len() < expected {
+        return Err(JsValue::from_str("outputs data too short for count"));
+    }
+
+    let mut buf = Vec::with_capacity(4 + count * 64);
+    buf.extend_from_slice(&(count as u32).to_le_bytes());
+    for i in 0..count {
+        let src = 4 + i * 72;
+        buf.extend_from_slice(&outputs_data[src..src + 64]);
+    }
+    Ok(buf)
+}
+
+#[wasm_bindgen]
 pub fn fromt_keyshare_birthday(key_share: &[u8]) -> Result<u64, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
     Ok(bundle.birthday)

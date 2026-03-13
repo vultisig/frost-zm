@@ -21,6 +21,11 @@ export interface ScanResult {
   scannedHeight: number;
 }
 
+export interface ScannedOutputs {
+  outputs: FoundOutput[];
+  chainHeight: number;
+}
+
 export interface MoneroKeys {
   address: string;
   viewKey: Uint8Array;

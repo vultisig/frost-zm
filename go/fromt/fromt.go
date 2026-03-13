@@ -301,6 +301,43 @@ func CkdPart2(state *CkdStateHandle, r1Packages []byte) ([]byte, error) {
 	return copyBuffer(&child), nil
 }
 
+type KeyImageStateHandle struct {
+	h C.Handle
+}
+
+func (h *KeyImageStateHandle) Close() error {
+	return toError(int(C.fromt_handle_free(h.h)))
+}
+
+func KeyImagePart1(keyShare, outputs, signerIDs []byte) (*KeyImageStateHandle, []byte, error) {
+	ks, p1 := cGoSlice(keyShare)
+	defer p1.Unpin()
+	out, p2 := cGoSlice(outputs)
+	defer p2.Unpin()
+	ids, p3 := cGoSlice(signerIDs)
+	defer p3.Unpin()
+	var state C.Handle
+	var partials C.tss_buffer
+	rc := C.fromt_key_image_part1(&ks, &out, &ids, &state, &partials)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, nil, err
+	}
+	return &KeyImageStateHandle{h: state}, copyBuffer(&partials), nil
+}
+
+func KeyImagePart2(state *KeyImageStateHandle, r1Packages []byte) ([]byte, error) {
+	r1, p := cGoSlice(r1Packages)
+	defer p.Unpin()
+	var keyImages C.tss_buffer
+	rc := C.fromt_key_image_part2(state.h, &r1, &keyImages)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&keyImages), nil
+}
+
 func DeriveAddress(keyShare []byte) (string, error) {
 	ks, p := cGoSlice(keyShare)
 	defer p.Unpin()

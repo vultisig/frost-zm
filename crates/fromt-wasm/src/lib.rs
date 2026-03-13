@@ -6,6 +6,7 @@ pub mod reshare;
 pub mod scan;
 pub mod session;
 pub mod spend;
+pub mod key_image;
 
 fn to_js_err<E: std::fmt::Debug>(e: E) -> JsValue {
     JsValue::from_str(&format!("{:?}", e))

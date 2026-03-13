@@ -54,6 +54,71 @@ pub extern "C" fn fromt_scan_balance(
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_scan_outputs(
+    key_share: Option<&go_slice>,
+    daemon_url: Option<&go_slice>,
+    birthday: u64,
+    out_data: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let ks_data = key_share.ok_or(lib_error::LIB_NULL_PTR)?;
+        let url_data = daemon_url.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_data.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let bundle = KeyShareBundle::deserialize(ks_data.as_slice())?;
+        let url = std::str::from_utf8(url_data.as_slice())
+            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+
+        let view_pair = spend::view_pair_from_bundle(&bundle)?;
+
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+        let data = rt.block_on(async {
+            let rpc = monero_simple_request_rpc::SimpleRequestTransport::new(url.to_string())
+                .await
+                .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+            spend::scan_outputs(&rpc, &view_pair, birthday).await
+        })?;
+
+        *out = tss_buffer::from_vec(data);
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn fromt_filter_spent_outputs(
+    daemon_url: Option<&go_slice>,
+    outputs_data: Option<&go_slice>,
+    key_images: Option<&go_slice>,
+    out_balance: Option<&mut u64>,
+    out_num_outputs: Option<&mut u32>,
+) -> lib_error {
+    with_error_handler(|| {
+        let url_data = daemon_url.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out_data = outputs_data.ok_or(lib_error::LIB_NULL_PTR)?;
+        let ki_data = key_images.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out_bal = out_balance.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out_num = out_num_outputs.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let url = std::str::from_utf8(url_data.as_slice())
+            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+
+        let (balance, count) = rt.block_on(async {
+            spend::filter_spent_outputs(url, out_data.as_slice(), ki_data.as_slice()).await
+        })?;
+
+        *out_bal = balance;
+        *out_num = count;
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn fromt_spend_prepare(
     key_share: Option<&go_slice>,
     daemon_url: Option<&go_slice>,

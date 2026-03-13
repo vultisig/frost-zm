@@ -274,6 +274,32 @@ func SignSessionFromSetup(setup, myPartyName, keyPackage, pubKeyPackage []byte) 
 	return SessionHandle(handle._0), nil
 }
 
+func SignSessionFromSetupWithAlpha(setup, myPartyName, keyPackage, pubKeyPackage, alpha []byte) (SessionHandle, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	setupSlice := cGoSlice(setup, pinner)
+	nameSlice := cGoSlice(myPartyName, pinner)
+	kpSlice := cGoSlice(keyPackage, pinner)
+	pkpSlice := cGoSlice(pubKeyPackage, pinner)
+	alphaSlice := cGoSlice(alpha, pinner)
+
+	var handle C.Handle
+
+	res := C.frozt_sign_session_from_setup_with_alpha(
+		setupSlice,
+		nameSlice,
+		kpSlice,
+		pkpSlice,
+		alphaSlice,
+		&handle,
+	)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+	return SessionHandle(handle._0), nil
+}
+
 func SignSessionFeed(session SessionHandle, msg []byte) (bool, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()

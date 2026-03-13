@@ -52,3 +52,10 @@ export interface SaplingKeys {
   ivk: Uint8Array;
   nk: Uint8Array;
 }
+
+export interface LightwalletTransport {
+  getLatestBlockHeight(): Promise<number>;
+  getBlockRange(startHeight: number, endHeight: number): Promise<CompactBlock[]>;
+  getTransaction(txHash: Uint8Array): Promise<Uint8Array>;
+  getTreeState?(height: number): Promise<string>;
+}

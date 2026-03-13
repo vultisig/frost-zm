@@ -100,6 +100,7 @@ async fn frozt_sign_run(
     msg_to_sign: Vec<u8>,
     is_coordinator: bool,
     num_signers: usize,
+    alpha: Option<Vec<u8>>,
     ch: FrostChannel,
 ) -> Result<Vec<u8>, lib_error> {
     let my_ident = *key_package.identifier();
@@ -126,17 +127,23 @@ async fn frozt_sign_run(
     let signing_package = SigningPackage::<J>::new(commit_map, &msg_to_sign);
 
     let (_sp_bytes, randomizer) = if is_coordinator {
-        let randomized_params = {
-            let rng = rand::thread_rng();
-            RandomizedParams::<J>::new(
-                pub_key_package.verifying_key(),
-                &signing_package,
-                rng,
-            ).map_err(|_| lib_error::LIB_SIGNING_ERROR)?
+        let randomizer = if let Some(ref alpha_bytes) = alpha {
+            Randomizer::<J>::deserialize(alpha_bytes)
+                .map_err(|_| lib_error::LIB_SIGNING_ERROR)?
+        } else {
+            let randomized_params = {
+                let rng = rand::thread_rng();
+                RandomizedParams::<J>::new(
+                    pub_key_package.verifying_key(),
+                    &signing_package,
+                    rng,
+                ).map_err(|_| lib_error::LIB_SIGNING_ERROR)?
+            };
+            *randomized_params.randomizer()
         };
 
         let sp_ser = signing_package.serialize().map_err(ser_err)?;
-        let rand_ser = randomized_params.randomizer().serialize();
+        let rand_ser = randomizer.serialize();
 
         let mut combined = Vec::with_capacity(4 + sp_ser.len() + rand_ser.len());
         combined.extend_from_slice(&(sp_ser.len() as u32).to_le_bytes());
@@ -144,7 +151,7 @@ async fn frozt_sign_run(
         combined.extend_from_slice(&rand_ser);
         ch.broadcast(combined).await;
 
-        (sp_ser, *randomized_params.randomizer())
+        (sp_ser, randomizer)
     } else {
         let (_sender, combined) = ch.recv().await;
         if combined.len() < 4 {
@@ -381,7 +388,56 @@ pub extern "C" fn frozt_sign_session_from_setup(
 
         let protocol: Box<dyn Ceremony<Result<Vec<u8>, lib_error>> + Send> =
             Box::new(Protocol::start(move |ch| {
-                frozt_sign_run(kp, pkp, msg_to_sign, is_coordinator, num_signers, ch)
+                frozt_sign_run(kp, pkp, msg_to_sign, is_coordinator, num_signers, None, ch)
+            }));
+
+        let state = SignSessionState { protocol, setup, my_id };
+        *out = Handle::allocate(state)?;
+        Ok(())
+    })
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn frozt_sign_session_from_setup_with_alpha(
+    setup_data: Option<&go_slice>,
+    my_party_name: Option<&go_slice>,
+    key_package: Option<&go_slice>,
+    pub_key_package: Option<&go_slice>,
+    alpha: Option<&go_slice>,
+    out_handle: Option<&mut Handle>,
+) -> lib_error {
+    with_error_handler(|| {
+        let sd = setup_data.ok_or(lib_error::LIB_NULL_PTR)?;
+        let name = my_party_name.ok_or(lib_error::LIB_NULL_PTR)?;
+        let kp_data = key_package.ok_or(lib_error::LIB_NULL_PTR)?;
+        let pkp_data = pub_key_package.ok_or(lib_error::LIB_NULL_PTR)?;
+        let alpha_data = alpha.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_handle.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let sign_setup = SignSetup::decode(sd.as_slice())?;
+        let setup = sign_setup.base;
+        let my_id = setup.frost_id_by_name(name.as_slice())
+            .ok_or(lib_error::LIB_INVALID_IDENTIFIER)?;
+
+        let kp = KeyPackage::<J>::deserialize(kp_data.as_slice()).map_err(ser_err)?;
+        let pkp = PublicKeyPackage::<J>::deserialize(pkp_data.as_slice()).map_err(ser_err)?;
+
+        let is_coordinator = setup.coordinator_id() == my_id;
+        let num_signers = setup.parties.len();
+        let msg_to_sign = sign_setup.message;
+        let alpha_owned = alpha_data.as_slice().to_vec();
+
+        let protocol: Box<dyn Ceremony<Result<Vec<u8>, lib_error>> + Send> =
+            Box::new(Protocol::start(move |ch| {
+                frozt_sign_run(
+                    kp,
+                    pkp,
+                    msg_to_sign,
+                    is_coordinator,
+                    num_signers,
+                    Some(alpha_owned),
+                    ch,
+                )
             }));
 
         let state = SignSessionState { protocol, setup, my_id };
@@ -899,6 +955,7 @@ mod tests {
     use super::*;
     use frost_session::setup::PartyEntry;
     use crate::keyshare::bundle::KeyShareBundle;
+    use group::ff::{Field, PrimeField};
 
     const TEST_BIRTHDAY: u64 = 3256538;
 
@@ -1146,6 +1203,149 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_session_sign_with_alpha_2x2() {
+        let bundles = run_n_party_dkg(2, 2);
+
+        let parsed: Vec<_> = bundles.iter()
+            .map(|b| KeyShareBundle::deserialize(b).unwrap())
+            .collect();
+
+        let signer_indices = [0usize, 1];
+        let msg_to_sign = b"test message for frozt signing with alpha";
+
+        let sign_parties = vec![
+            PartyEntry { frost_id: 1, name: b"party-1".to_vec() },
+            PartyEntry { frost_id: 2, name: b"party-2".to_vec() },
+        ];
+
+        let sign_setup = SignSetup {
+            base: SetupMsg {
+                max_signers: signer_indices.len() as u16,
+                min_signers: signer_indices.len() as u16,
+                parties: sign_parties,
+            },
+            message: msg_to_sign.to_vec(),
+        };
+        let sign_setup_bytes = sign_setup.encode();
+
+        let alpha_bytes = jubjub::Fr::random(&mut rand::thread_rng())
+            .to_repr()
+            .to_vec();
+
+        let mut sessions: Vec<(u16, Handle)> = Vec::new();
+        for &idx in &signer_indices {
+            let id = (idx + 1) as u16;
+            let my_name = format!("party-{}", id).into_bytes();
+            let kp_bytes = parsed[idx].key_package.serialize().unwrap();
+            let pkp_bytes = parsed[idx].pub_key_package.serialize().unwrap();
+
+            let setup_slice = go_slice::from(sign_setup_bytes.as_slice());
+            let name_slice = go_slice::from(my_name.as_slice());
+            let kp_slice = go_slice::from(kp_bytes.as_slice());
+            let pkp_slice = go_slice::from(pkp_bytes.as_slice());
+            let alpha_slice = go_slice::from(alpha_bytes.as_slice());
+
+            let mut handle = Handle::null();
+            let res = frozt_sign_session_from_setup_with_alpha(
+                Some(&setup_slice), Some(&name_slice),
+                Some(&kp_slice), Some(&pkp_slice),
+                Some(&alpha_slice), Some(&mut handle),
+            );
+            assert_eq!(res, lib_error::LIB_OK);
+            sessions.push((id, handle));
+        }
+
+        let finished = run_session_loop(
+            &sessions,
+            frozt_sign_session_feed,
+            frozt_sign_session_take_msg,
+        );
+        assert!(finished.iter().all(|f| *f), "not all alpha signers finished");
+
+        for idx in 0..sessions.len() {
+            let mut sig_buf = tss_buffer::empty();
+            let res = frozt_sign_session_result(sessions[idx].1, Some(&mut sig_buf));
+            assert_eq!(res, lib_error::LIB_OK);
+            let sig_bytes = sig_buf.into_vec();
+            assert!(!sig_bytes.is_empty(), "alpha signature is empty for signer {}", idx);
+        }
+    }
+
+    #[test]
+    fn test_session_sign_with_alpha_identifier_order_mismatch_fails() {
+        let bundles = run_n_party_dkg(2, 2);
+
+        let parsed: Vec<_> = bundles.iter()
+            .map(|b| KeyShareBundle::deserialize(b).unwrap())
+            .collect();
+
+        let signer_indices = [0usize, 1];
+        let msg_to_sign = b"test message for frozt signing with mismatched ids";
+
+        let sign_parties = vec![
+            PartyEntry { frost_id: 1, name: b"party-2".to_vec() },
+            PartyEntry { frost_id: 2, name: b"party-1".to_vec() },
+        ];
+
+        let sign_setup = SignSetup {
+            base: SetupMsg {
+                max_signers: signer_indices.len() as u16,
+                min_signers: signer_indices.len() as u16,
+                parties: sign_parties,
+            },
+            message: msg_to_sign.to_vec(),
+        };
+        let sign_setup_bytes = sign_setup.encode();
+
+        let alpha_bytes = jubjub::Fr::random(&mut rand::thread_rng())
+            .to_repr()
+            .to_vec();
+
+        let mut sessions: Vec<(u16, Handle)> = Vec::new();
+        for &idx in &signer_indices {
+            let id = (idx + 1) as u16;
+            let my_name = format!("party-{}", id).into_bytes();
+            let kp_bytes = parsed[idx].key_package.serialize().unwrap();
+            let pkp_bytes = parsed[idx].pub_key_package.serialize().unwrap();
+            let setup_id = sign_setup.base.frost_id_by_name(my_name.as_slice()).unwrap();
+
+            let setup_slice = go_slice::from(sign_setup_bytes.as_slice());
+            let name_slice = go_slice::from(my_name.as_slice());
+            let kp_slice = go_slice::from(kp_bytes.as_slice());
+            let pkp_slice = go_slice::from(pkp_bytes.as_slice());
+            let alpha_slice = go_slice::from(alpha_bytes.as_slice());
+
+            let mut handle = Handle::null();
+            let res = frozt_sign_session_from_setup_with_alpha(
+                Some(&setup_slice), Some(&name_slice),
+                Some(&kp_slice), Some(&pkp_slice),
+                Some(&alpha_slice), Some(&mut handle),
+            );
+            assert_eq!(res, lib_error::LIB_OK);
+            sessions.push((setup_id, handle));
+        }
+
+        let _finished = run_session_loop(
+            &sessions,
+            frozt_sign_session_feed,
+            frozt_sign_session_take_msg,
+        );
+
+        let mut result_codes = Vec::new();
+        for (_id, handle) in sessions {
+            let mut sig_buf = tss_buffer::empty();
+            let res = frozt_sign_session_result(handle, Some(&mut sig_buf));
+            result_codes.push(res);
+        }
+
+        assert!(
+            result_codes.iter().any(|res| *res != lib_error::LIB_OK),
+            "mismatched identifier order unexpectedly succeeded: {:?}",
+            result_codes
+        );
+    }
+
     fn abandon_seed() -> Vec<u8> {
         hex::decode(
             "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\
@@ -1274,5 +1474,99 @@ mod tests {
         assert_eq!(b0.sapling_extras.len(), 96);
 
         assert_eq!(b0.birthday, TEST_BIRTHDAY);
+    }
+
+    #[test]
+    fn test_session_key_import_then_sign_with_alpha_2x2() {
+        let seed = abandon_seed();
+        let setup_per_party = make_key_import_setup_bytes(2, 2, &seed, 0);
+
+        let import_sessions: Vec<_> = (0..2).map(|i| {
+            let party_id = (i + 1) as u16;
+            let my_name = format!("party-{}", party_id);
+            let setup_slice = go_slice::from(setup_per_party[i].as_slice());
+            let name_bytes = my_name.into_bytes();
+            let name_slice = go_slice::from(name_bytes.as_slice());
+
+            let mut handle = Handle::null();
+            let res = frozt_key_import_session_from_setup(
+                Some(&setup_slice), Some(&name_slice), Some(&mut handle),
+            );
+            assert_eq!(res, lib_error::LIB_OK);
+            (party_id, handle)
+        }).collect();
+
+        let finished = run_session_loop(
+            &import_sessions,
+            frozt_key_import_session_feed,
+            frozt_key_import_session_take_msg,
+        );
+        assert!(finished.iter().all(|f| *f), "not all parties finished key import");
+
+        let mut imported_bundles = Vec::new();
+        for (_id, handle) in &import_sessions {
+            let mut bundle_buf = tss_buffer::empty();
+            let res = frozt_key_import_session_result(*handle, Some(&mut bundle_buf));
+            assert_eq!(res, lib_error::LIB_OK);
+            imported_bundles.push(bundle_buf.into_vec());
+        }
+
+        let parsed: Vec<_> = imported_bundles.iter()
+            .map(|bundle| KeyShareBundle::deserialize(bundle).unwrap())
+            .collect();
+
+        let sign_setup = SignSetup {
+            base: SetupMsg {
+                max_signers: 2,
+                min_signers: 2,
+                parties: vec![
+                    PartyEntry { frost_id: 1, name: b"party-1".to_vec() },
+                    PartyEntry { frost_id: 2, name: b"party-2".to_vec() },
+                ],
+            },
+            message: b"key-import native alpha signing".to_vec(),
+        };
+        let sign_setup_bytes = sign_setup.encode();
+        let alpha_bytes = jubjub::Fr::random(&mut rand::thread_rng())
+            .to_repr()
+            .to_vec();
+
+        let mut sign_sessions: Vec<(u16, Handle)> = Vec::new();
+        for idx in 0..2usize {
+            let id = (idx + 1) as u16;
+            let my_name = format!("party-{}", id).into_bytes();
+            let kp_bytes = parsed[idx].key_package.serialize().unwrap();
+            let pkp_bytes = parsed[idx].pub_key_package.serialize().unwrap();
+
+            let setup_slice = go_slice::from(sign_setup_bytes.as_slice());
+            let name_slice = go_slice::from(my_name.as_slice());
+            let kp_slice = go_slice::from(kp_bytes.as_slice());
+            let pkp_slice = go_slice::from(pkp_bytes.as_slice());
+            let alpha_slice = go_slice::from(alpha_bytes.as_slice());
+
+            let mut handle = Handle::null();
+            let res = frozt_sign_session_from_setup_with_alpha(
+                Some(&setup_slice), Some(&name_slice),
+                Some(&kp_slice), Some(&pkp_slice),
+                Some(&alpha_slice), Some(&mut handle),
+            );
+            assert_eq!(res, lib_error::LIB_OK);
+            sign_sessions.push((id, handle));
+        }
+
+        let finished = run_session_loop(
+            &sign_sessions,
+            frozt_sign_session_feed,
+            frozt_sign_session_take_msg,
+        );
+        assert!(finished.iter().all(|f| *f), "not all imported alpha signers finished");
+
+        for idx in 0..sign_sessions.len() {
+            let mut sig_buf = tss_buffer::empty();
+            let res = frozt_sign_session_result(sign_sessions[idx].1, Some(&mut sig_buf));
+            assert_eq!(res, lib_error::LIB_OK);
+            let sig_bytes = sig_buf.into_vec();
+            assert!(!sig_bytes.is_empty(), "imported alpha signature is empty for signer {}", idx);
+        }
     }
 }

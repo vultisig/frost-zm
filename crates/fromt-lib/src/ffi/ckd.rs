@@ -52,7 +52,7 @@ pub extern "C" fn fromt_ckd_part2(
     })
 }
 
-fn decode_signer_ids(data: &[u8]) -> Result<Vec<u16>, lib_error> {
+pub(crate) fn decode_signer_ids(data: &[u8]) -> Result<Vec<u16>, lib_error> {
     if data.len() % 2 != 0 {
         return Err(lib_error::LIB_SERIALIZATION_ERROR);
     }
@@ -65,7 +65,7 @@ fn decode_signer_ids(data: &[u8]) -> Result<Vec<u16>, lib_error> {
     Ok(ids)
 }
 
-fn decode_ckd_packages(data: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, lib_error> {
+pub(crate) fn decode_ckd_packages(data: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, lib_error> {
     let mut pos = 0;
     if data.len() < 4 {
         return Err(lib_error::LIB_SERIALIZATION_ERROR);
