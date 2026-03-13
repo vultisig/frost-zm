@@ -538,7 +538,10 @@ pub fn spend_preprocess(
 > {
     let machine = signable
         .multisig(keys)
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| {
+            eprintln!("[fromt][spend_preprocess] multisig failed: {:?}", e);
+            lib_error::LIB_SIGNING_ERROR
+        })?;
 
     let (sign_machine, preprocess) = machine.preprocess(&mut OsRng);
 
@@ -570,7 +573,14 @@ pub fn spend_sign(
 
     let (sig_machine, share) = sign_machine
         .sign(parsed_preprocesses, &[])
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| {
+            eprintln!(
+                "[fromt][spend_sign] sign failed: participants={}, error={:?}",
+                preprocesses.len(),
+                e
+            );
+            lib_error::LIB_SIGNING_ERROR
+        })?;
 
     let mut share_bytes = Vec::new();
     share
@@ -594,7 +604,14 @@ pub fn spend_complete(
 
     let tx = sig_machine
         .complete(parsed_shares)
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| {
+            eprintln!(
+                "[fromt][spend_complete] complete failed: participants={}, error={:?}",
+                shares.len(),
+                e
+            );
+            lib_error::LIB_SIGNING_ERROR
+        })?;
 
     let tx_bytes = tx.serialize();
 

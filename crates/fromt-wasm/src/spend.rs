@@ -358,3 +358,12 @@ pub fn fromt_spend_complete(
 
     spend::spend_complete(sig_machine, shares).map_err(to_js_err)
 }
+
+#[wasm_bindgen]
+pub fn fromt_tx_hash(raw_tx: &[u8]) -> Result<Vec<u8>, JsValue> {
+    let tx = monero_wallet::transaction::Transaction::<monero_wallet::transaction::NotPruned>::read(
+        &mut &raw_tx[..],
+    )
+    .map_err(|e| JsValue::from_str(&format!("parse tx: {:?}", e)))?;
+    Ok(tx.hash().to_vec())
+}
