@@ -593,6 +593,39 @@ func TestReshare(t *testing.T) {
 	t.Log("=== All reshare operations successful ===")
 }
 
+func TestKeyShareBundleHelpers(t *testing.T) {
+	keyShares, _ := runDKG(t, 3, 2)
+
+	keyPackage, err := KeyShareBundleKeyPackage(keyShares[0])
+	if err != nil {
+		t.Fatalf("KeyShareBundleKeyPackage: %v", err)
+	}
+	pubKeyPackage, err := KeyShareBundlePubKeyPackage(keyShares[0])
+	if err != nil {
+		t.Fatalf("KeyShareBundlePubKeyPackage: %v", err)
+	}
+	viewKey, err := KeyShareViewKey(keyShares[0])
+	if err != nil {
+		t.Fatalf("KeyShareViewKey: %v", err)
+	}
+	network, err := KeyShareNetwork(keyShares[0])
+	if err != nil {
+		t.Fatalf("KeyShareNetwork: %v", err)
+	}
+	birthday, err := KeyShareBirthday(keyShares[0])
+	if err != nil {
+		t.Fatalf("KeyShareBirthday: %v", err)
+	}
+
+	repacked, err := KeyShareBundlePack(keyPackage, pubKeyPackage, viewKey, network, birthday)
+	if err != nil {
+		t.Fatalf("KeyShareBundlePack: %v", err)
+	}
+	if !bytes.Equal(repacked, keyShares[0]) {
+		t.Fatal("repacked keyshare bundle mismatch")
+	}
+}
+
 func TestAddressDerivation(t *testing.T) {
 	keyShares, _ := runDKG(t, 3, 2)
 

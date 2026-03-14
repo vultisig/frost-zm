@@ -8,6 +8,8 @@ package fromt
 import "C"
 
 import (
+	"encoding/binary"
+	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -35,6 +37,11 @@ type CkdStateHandle struct {
 func (h *CkdStateHandle) Close() error {
 	return toError(int(C.fromt_handle_free(h.h)))
 }
+
+const (
+	fromtBundleVersion = 2
+	fromtViewKeySize   = 32
+)
 
 func cGoSlice(data []byte) (C.go_slice, *runtime.Pinner) {
 	var pinner runtime.Pinner
@@ -398,6 +405,64 @@ func KeyShareBirthday(keyShare []byte) (uint64, error) {
 	return uint64(birthday), nil
 }
 
+func KeyShareNetwork(keyShare []byte) (uint8, error) {
+	if len(keyShare) < 2 {
+		return 0, fmt.Errorf("fromt keyshare too short")
+	}
+	version := keyShare[0]
+	if version != 1 && version != fromtBundleVersion {
+		return 0, fmt.Errorf("fromt keyshare unknown version %d", version)
+	}
+	return keyShare[1], nil
+}
+
+func KeyShareBundleKeyPackage(keyShare []byte) ([]byte, error) {
+	version, _, _, _, keyPackage, _, err := decodeKeyShareBundle(keyShare)
+	if err != nil {
+		return nil, err
+	}
+	if version != 1 && version != fromtBundleVersion {
+		return nil, fmt.Errorf("fromt keyshare unknown version %d", version)
+	}
+	return keyPackage, nil
+}
+
+func KeyShareBundlePubKeyPackage(keyShare []byte) ([]byte, error) {
+	version, _, _, _, _, pubKeyPackage, err := decodeKeyShareBundle(keyShare)
+	if err != nil {
+		return nil, err
+	}
+	if version != 1 && version != fromtBundleVersion {
+		return nil, fmt.Errorf("fromt keyshare unknown version %d", version)
+	}
+	return pubKeyPackage, nil
+}
+
+func KeyShareBundlePack(keyPackage, pubKeyPackage, viewKey []byte, network uint8, birthday uint64) ([]byte, error) {
+	if len(viewKey) != fromtViewKeySize {
+		return nil, fmt.Errorf("fromt view key must be %d bytes", fromtViewKeySize)
+	}
+	total := 1 + 1 + fromtViewKeySize + 8 + 4 + len(keyPackage) + 4 + len(pubKeyPackage)
+	buf := make([]byte, total)
+	pos := 0
+	buf[pos] = fromtBundleVersion
+	pos++
+	buf[pos] = network
+	pos++
+	copy(buf[pos:pos+fromtViewKeySize], viewKey)
+	pos += fromtViewKeySize
+	binary.LittleEndian.PutUint64(buf[pos:pos+8], birthday)
+	pos += 8
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], uint32(len(keyPackage)))
+	pos += 4
+	copy(buf[pos:pos+len(keyPackage)], keyPackage)
+	pos += len(keyPackage)
+	binary.LittleEndian.PutUint32(buf[pos:pos+4], uint32(len(pubKeyPackage)))
+	pos += 4
+	copy(buf[pos:pos+len(pubKeyPackage)], pubKeyPackage)
+	return buf, nil
+}
+
 func KeyShareIdentifier(keyShare []byte) (uint16, error) {
 	ks, p := cGoSlice(keyShare)
 	defer p.Unpin()
@@ -408,6 +473,49 @@ func KeyShareIdentifier(keyShare []byte) (uint16, error) {
 		return 0, err
 	}
 	return uint16(id), nil
+}
+
+func decodeKeyShareBundle(data []byte) (version uint8, network uint8, viewKey []byte, birthday uint64, keyPackage []byte, pubKeyPackage []byte, err error) {
+	if len(data) < 1+1+fromtViewKeySize+4 {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare too short")
+	}
+	pos := 0
+	version = data[pos]
+	pos++
+	if version != 1 && version != fromtBundleVersion {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare unknown version %d", version)
+	}
+	network = data[pos]
+	pos++
+	viewKey = append([]byte(nil), data[pos:pos+fromtViewKeySize]...)
+	pos += fromtViewKeySize
+	if version >= fromtBundleVersion {
+		if pos+8 > len(data) {
+			return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare truncated at birthday")
+		}
+		birthday = binary.LittleEndian.Uint64(data[pos : pos+8])
+		pos += 8
+	}
+	if pos+4 > len(data) {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare truncated at key package length")
+	}
+	keyPackageLen := int(binary.LittleEndian.Uint32(data[pos : pos+4]))
+	pos += 4
+	if pos+keyPackageLen > len(data) {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare truncated at key package")
+	}
+	keyPackage = append([]byte(nil), data[pos:pos+keyPackageLen]...)
+	pos += keyPackageLen
+	if pos+4 > len(data) {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare truncated at pubkey package length")
+	}
+	pubKeyPackageLen := int(binary.LittleEndian.Uint32(data[pos : pos+4]))
+	pos += 4
+	if pos+pubKeyPackageLen > len(data) {
+		return 0, 0, nil, 0, nil, nil, fmt.Errorf("fromt keyshare truncated at pubkey package")
+	}
+	pubKeyPackage = append([]byte(nil), data[pos:pos+pubKeyPackageLen]...)
+	return version, network, viewKey, birthday, keyPackage, pubKeyPackage, nil
 }
 
 func EncodeIdentifier(id uint16) ([]byte, error) {
@@ -435,7 +543,6 @@ type SpendSigHandle struct {
 func (h *SpendSigHandle) Close() error {
 	return toError(int(C.fromt_handle_free(h.h)))
 }
-
 
 func SpendPreprocess(keyShare, signableTx []byte) (*SpendSignHandle, []byte, error) {
 	ks, p1 := cGoSlice(keyShare)
