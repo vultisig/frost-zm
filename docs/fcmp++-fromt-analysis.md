@@ -306,11 +306,12 @@ New output construction following the CARROT protocol:
 - [ ] Update output scanner for CARROT view tags
 - [ ] Add key image sign-bit clearing
 
-### Phase 2: Core Crypto (After FCMP++ Milestone 7)
-- [ ] Implement or adapt threshold GSP signing from official multisig spec
+### Phase 2: Core Crypto (Can Start Now)
+- [ ] Port `SalLegacyAlgorithm` from kayabaNerve's fcmp-plus-plus to FROMT
 - [ ] Implement distributed DLEq proof protocol
-- [ ] Build FCMP++ proof assembly (membership proof + threshold GSP + DLEq)
-- [ ] Integration test against FCMP++ alpha stressnet
+- [ ] Build FCMP++ proof assembly (membership proof + threshold SAL + DLEq)
+- [ ] Unit-test threshold SAL against verifier equations
+- [ ] Integration-test full tx against FCMP++ stressnet (network validates proofs regardless of how they were constructed — no "multisig support" needed)
 
 ### Phase 3: Transaction Builder
 - [ ] New transaction type `RCTTypeFcmpPlusPlus`
@@ -343,7 +344,7 @@ New output construction following the CARROT protocol:
 | Proof generation too slow for WASM/mobile | Medium | ~1 min on desktop; may need native-only signing or WebWorker offload |
 | `modular-frost` API drift (repo archived → monero-oxide) | Medium | Pin specific commits; track migration |
 | GBP security proofs incomplete (Cypher Stack) | Medium | Don't deploy to production until audit finishes |
-| No multisig test network available | High | Unit-test with mock Curve Tree; wait for stressnet multisig support for integration tests |
+| Stressnet wallet lacks multisig UX | Low | Irrelevant — network validates proofs regardless of construction method; we bypass their wallet and submit raw transactions |
 | CARROT addressing spec changes | Low | CARROT has been audited; relatively stable |
 | Helioselene curve security | Low | 127.3 bits ECDLP security; audited by Veridise |
 | Timeline uncertainty | Medium | FCMP++ mainnet tentatively mid-late 2026; plan accordingly |
@@ -400,10 +401,10 @@ Wallet scans outputs (view key + CARROT view tags)
 **A: Yes.** kayabaNerve already built it (`sal/legacy_multisig.rs` in fcmp-plus-plus). The math is linear in `x`, compatible with FROST, and plugs into `modular-frost`'s `Algorithm` trait — the same framework FROMT already uses. We wouldn't be inventing new crypto; we'd be porting existing, working code. The real risk isn't mathematical — it's spec instability (FCMP++ is pre-mainnet) and the lack of a multisig-enabled test network.
 
 **Q: What's the biggest blocker?**
-**A: A testable FCMP++ network with multisig support.** The alpha stressnet explicitly does NOT support multisig. We can build and unit-test the threshold SAL implementation, but can't integration-test against a real FCMP++ node until the stressnet adds multisig support.
+**A: Spec stability.** The FCMP++ SAL proof structure could change before mainnet. The math and code are available now — we can build, unit-test against the verifier, and integration-test against the stressnet immediately. The network validates proofs regardless of whether they were constructed by one signer or by threshold parties — there is no "multisig support" gate at the consensus layer.
 
 **Q: What's the timeline?**
-**A: Realistically, late 2026 at earliest.** FCMP++ mainnet is tentatively mid-late 2026. The multisig milestone needs to be completed first. FROMT integration work can begin in parallel with Phase 1 (non-crypto infrastructure), but Phase 2 is blocked on the official multisig spec.
+**A: We can start building now and ship on FCMP++ hard fork day.** The threshold SAL code exists (kayabaNerve's `legacy_multisig.rs`), the stressnet is live for integration testing, and the network doesn't distinguish threshold-constructed proofs from single-signer proofs. FCMP++ mainnet hard fork is tentatively mid-late 2026.
 
 **Q: Is the proof too slow for our use case?**
 **A: Potentially, for WASM/mobile.** FCMP++ proof generation takes ~1 minute on consumer desktop hardware. In WASM or on mobile devices, this could be significantly slower. The membership proof construction (Curve Tree traversal with Helios/Selene arithmetic) is the expensive part. Native signing may be required, with WASM used only for DKG/resharing/key management.
