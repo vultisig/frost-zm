@@ -257,14 +257,67 @@ The SAL proof is threshold-compatible because `x` enters only linearly. This is 
 - The Curve Tree data structure — use monero-oxide's implementation
 - The GBP prover/verifier — use the audited implementation
 
-### 3.5 The Honest Answer
+### 3.5 Available Test Infrastructure (monero-oxide)
 
-**We know enough to build it.** The math is understood, the code exists, and it plugs into our existing `modular-frost` framework. The question isn't capability — it's **risk**:
+kayabaNerve's repo provides complete test coverage we can reuse:
+
+**Single-signer SAL test** (`tests/sal/mod.rs`):
+- Generate random `(x, y)`, create output `O = xG + yT`, rerandomize, prove, verify with batch verifier
+- 4 batch equations checked, binary pass/fail
+
+**Threshold SAL tests** (feature-gated behind `multisig`):
+- `test_sal_legacy_multisig()` — FROST over standard Ed25519, secret-shares `x` (our model)
+- `test_sal_multisig()` — FROST over Ed25519T, secret-shares `y`
+- Both use `modular_frost::tests::{key_gen, algorithm_machines, sign}` — full t-of-n ceremony in-memory, no network
+
+**Full FCMP++ pipeline test** (`tests/mod.rs`):
+- Builds a minimal 1-leaf Curve Tree in-memory (mock, no chain connection)
+- Proves membership + SAL + key image
+- Verifies with three batch verifiers (Ed25519, Selene, Helios)
+- Tests serialization/deserialization roundtrip
+- Uses real Monero generators (compiled via `build.rs`)
+
+**Malleation/soundness test** (`crypto/fcmps/src/tests.rs`):
+- Flips every byte of serialized proof, asserts none verify — catches subtle encoding bugs
+
+All tests are generative (random keys, prove-then-verify). No pre-computed test vectors. No chain connection needed. Verification is binary — either we produce a valid proof or we don't.
+
+### 3.6 API Surface Impact: No New Functions Needed
+
+The FCMP++ transition does NOT require branching the FROMT API or adding parallel code paths.
+
+**Key image ceremony**: Unchanged math. `I = x * H(K)` via threshold Lagrange. Add one line to clear the sign bit. Same functions (`key_image_part1`, `key_image_part2`).
+
+**Signing ceremony**: `spend_preprocess` / `spend_sign` / `spend_complete` swap `ClsagMultisig` for `SalLegacyAlgorithm` internally. Both implement the same `modular-frost::Algorithm` trait. Same 3-phase round structure:
+
+```
+Current (CLSAG):     preprocess → sign → complete
+FCMP++ (SAL Legacy): preprocess → sign → complete
+```
+
+SAL Legacy's preprocess round includes an **addendum** (each party's `key_image_share` + `x_U_share`), but modular-frost handles addendum exchange as part of the preprocess round — not as an extra round. Bigger payload, same round count.
+
+**No runtime branching.** After the FCMP++ hard fork, CLSAG is dead on-chain. It's a wholesale swap of the `Algorithm` implementation, not a flag. Existing keyshares are forward-compatible — same FROST Ed25519 shares, different proof produced.
+
+The FFI surface (`fromt_spend_preprocess`, `fromt_spend_sign`, `fromt_spend_complete`) keeps the same signatures. The Go wrappers, WASM bindings, and TypeScript SDK ceremony code don't need to know which `Algorithm` is running underneath.
+
+**The signing flow stays:**
+```
+1. Key image ceremony (unchanged) → check if outputs are spent
+2. Signing ceremony (SAL instead of CLSAG) → produces SAL proof
+   └── SAL also recomputes key images internally via addendum
+       (should match step 1 — free consistency check)
+3. Assemble tx with membership proof + SAL proof → broadcast
+```
+
+### 3.7 The Honest Answer
+
+**We know enough to build it.** The math is understood, the code exists, the test infrastructure exists, and it plugs into our existing `modular-frost` framework. The question isn't capability — it's **risk**:
 
 1. **Spec instability**: FCMP++ is pre-mainnet. The SAL proof structure could change. Building now means potential rework.
-2. **No test network for multisig**: The alpha stressnet explicitly does NOT support multisig. We can't integration-test threshold SAL against a real FCMP++ node yet.
-3. **Dependency chain**: We'd depend on kayabaNerve's `fcmp-plus-plus` crates which are archived and migrating to `monero-oxide`. The API surface is moving.
-4. **Audit gap**: The GBP security proofs are still being developed by Cypher Stack. Building on unfinished audit work is a risk for production deployment.
+2. **Dependency chain**: We'd depend on kayabaNerve's `fcmp-plus-plus` crates which are archived and migrating to `monero-oxide`. The API surface is moving.
+3. **Audit gap**: The GBP security proofs are still being developed by Cypher Stack. Building on unfinished audit work is a risk for production deployment.
+4. **Verification is binary**: Either we produce a valid tx or we don't. The network doesn't care how the proof was constructed — no "multisig support" gate at the consensus layer. We can test against the stressnet now and ship on mainnet hard fork day.
 
 ---
 
@@ -297,7 +350,7 @@ New output construction following the CARROT protocol:
 
 ---
 
-## 4. Migration Strategy
+## 5. Migration Strategy
 
 ### Phase 1: Preparation (Can Start Now)
 - [ ] Add `helioselene`, `generalized-bulletproofs`, `ec-divisors` as dependencies
