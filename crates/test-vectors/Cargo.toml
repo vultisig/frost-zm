@@ -8,7 +8,7 @@ name = "generate-vectors"
 path = "src/main.rs"
 
 [dependencies]
-frozt-lib = { path = "../frozt-lib" }
+froztlib = { path = "../frozt", package = "frozt" }
 fromtlib = { path = "../fromt", package = "fromt" }
 frobtlib = { path = "../frobt", package = "frobt" }
 froethlib = { path = "../froeth", package = "froeth" }

@@ -399,6 +399,21 @@ pub fn frobt_keyshare_network(key_share: &[u8]) -> Result<u8, JsValue> {
     Ok(bundle.metadata.network)
 }
 
+#[wasm_bindgen]
+pub fn frobt_keyshare_identifier(key_share: &[u8]) -> Result<u16, JsValue> {
+    let bundle = frobtlib::keyshare::bundle::KeyShareBundle::deserialize(key_share)
+        .map_err(to_js_err)?;
+    frobtlib::keyshare::identifier::identifier_to_u16(bundle.key_package.identifier())
+        .map_err(to_js_err)
+}
+
+#[wasm_bindgen]
+pub fn frobt_private_key_to_public(private_key: &[u8]) -> Result<Vec<u8>, JsValue> {
+    let sk: &[u8; 32] = private_key.try_into().map_err(to_js_err)?;
+    frobtlib::ceremony::key_import::private_key_to_public(sk)
+        .map_err(to_js_err)
+}
+
 // === Session-based Ceremonies ===
 
 async fn frobt_dkg_run(

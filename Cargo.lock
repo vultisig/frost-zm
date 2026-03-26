@@ -1351,7 +1351,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "frozt-lib"
+name = "frozt"
 version = "0.1.0"
 dependencies = [
  "bech32",
@@ -1388,7 +1388,7 @@ version = "0.1.0"
 dependencies = [
  "bip32",
  "frost-ffi",
- "frozt-lib",
+ "frozt",
  "getrandom 0.2.17",
  "rustls",
  "sapling-crypto",
@@ -1414,7 +1414,7 @@ dependencies = [
  "frost-core",
  "frost-rerandomized",
  "frost-session",
- "frozt-lib",
+ "frozt",
  "getrandom 0.2.17",
  "group",
  "hex",
@@ -3837,7 +3837,7 @@ dependencies = [
  "frost-rerandomized",
  "frost-secp256k1",
  "frosty",
- "frozt-lib",
+ "frozt",
  "group",
  "hex",
  "jubjub",

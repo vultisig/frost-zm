@@ -27,7 +27,7 @@ crates/
   froeth/              Ethereum — Keccak+EIP-55 addresses, BIP32 CKD
   frosst/              Solana — Ed25519 signing, base58 addresses
   fromt/               Monero — view keys, CLSAG, key images, Keccak CKD, subaddresses
-  frozt-lib/           Zcash Sapling — rerandomized signing, z-addresses, tx building
+  frozt/           Zcash Sapling — rerandomized signing, z-addresses, tx building
 
   frobt-wasm/          Bitcoin WASM bindings (wasm-bindgen)
   froeth-wasm/         Ethereum WASM bindings (wasm-bindgen)
@@ -191,17 +191,17 @@ DKG delegates to `frost_core::keys::dkg::part1/2/3`. Signing delegates to `frost
 
 ### What we implement ourselves
 
-Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozt-lib/` (Zcash-specific):
+Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozt/` (Zcash-specific):
 
 **Resharing** (`frost-ceremony/src/reshare.rs`) — Changes the threshold scheme (e.g., 2-of-2 to 2-of-3) while preserving the group public key. The only custom math is Lagrange interpolation coefficients over the scalar field — textbook polynomial evaluation using upstream field arithmetic. The result feeds into standard `frost-core` DKG rounds 2 and 3 and is verified against the expected verifying key.
 
-**Key Import** (`frost-ceremony/src/key_import.rs`, `frozt-lib/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
+**Key Import** (`frost-ceremony/src/key_import.rs`, `frozt/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
 
-**Sapling extras & z-address composition** (`frozt-lib/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
+**Sapling extras & z-address composition** (`frozt/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
 
-**Transaction building** (`frozt-lib/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
+**Transaction building** (`frozt/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
 
-**Ceremony metadata** (`frozt-lib/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
+**Ceremony metadata** (`frozt/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
 
 Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay client) is non-cryptographic plumbing.
 
@@ -417,7 +417,7 @@ make build-fromt-linux-arm64
 ## Test
 
 ```bash
-make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, fromt-lib, wasm)
+make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, all chains, wasm)
 make test-go             # All Go tests
 make test                # Both
 

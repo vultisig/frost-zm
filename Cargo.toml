@@ -14,7 +14,7 @@ members = [
     "crates/froeth-wasm",
     "crates/fromt-sdk",
     "crates/fromt-wasm",
-    "crates/frozt-lib",
+    "crates/frozt",
     "crates/frozt-sdk",
     "crates/frozt-wasm",
     "crates/test-vectors",
