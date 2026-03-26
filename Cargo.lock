@@ -1218,6 +1218,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "frosst-wasm"
+version = "0.1.0"
+dependencies = [
+ "frosst",
+ "frost-core",
+ "frost-ed25519",
+ "frosty",
+ "getrandom 0.2.17",
+ "js-sys",
+ "rand",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "frost-ceremony"
 version = "0.1.0"
 dependencies = [
