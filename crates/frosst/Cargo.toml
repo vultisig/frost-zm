@@ -1,0 +1,24 @@
+[package]
+name = "frosst"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "frosstlib"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frosty = { path = "../frosty" }
+frost-ffi = { path = "../frost-ffi" }
+frost-ceremony = { path = "../frost-ceremony" }
+frost-core = { version = "2", features = ["internals"] }
+frost-ed25519 = "2"
+rand = "0.8"
+paste = "1"
+bs58 = "0.5"
+
+[dev-dependencies]
+frosty = { path = "../frosty", features = ["test-helpers"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

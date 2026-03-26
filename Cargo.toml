@@ -8,6 +8,7 @@ members = [
     "crates/frobt",
     "crates/froeth",
     "crates/fromt",
+    "crates/frosst",
     "crates/frobt-wasm",
     "crates/froeth-wasm",
     "crates/fromt-sdk",

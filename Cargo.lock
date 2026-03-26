@@ -1203,6 +1203,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "frosst"
+version = "0.1.0"
+dependencies = [
+ "bs58",
+ "frost-ceremony",
+ "frost-core",
+ "frost-ed25519",
+ "frost-ffi",
+ "frosty",
+ "getrandom 0.2.17",
+ "paste",
+ "rand",
+]
+
+[[package]]
 name = "frost-ceremony"
 version = "0.1.0"
 dependencies = [
