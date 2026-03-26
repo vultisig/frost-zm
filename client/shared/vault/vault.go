@@ -12,6 +12,7 @@ import (
 const (
 	ChainZcashSapling = "ZcashSapling"
 	ChainMonero       = "Monero"
+	ChainEthereum     = "Ethereum"
 )
 
 type ChainKeyEntry struct {
@@ -23,6 +24,14 @@ type ChainKeyEntry struct {
 func FroztChainKeyEntry(bundle []byte, verifyingKeyHex string) ChainKeyEntry {
 	return ChainKeyEntry{
 		Chain:     ChainZcashSapling,
+		PublicKey: verifyingKeyHex,
+		KeyShare:  base64.StdEncoding.EncodeToString(bundle),
+	}
+}
+
+func FroethChainKeyEntry(bundle []byte, verifyingKeyHex string) ChainKeyEntry {
+	return ChainKeyEntry{
+		Chain:     ChainEthereum,
 		PublicKey: verifyingKeyHex,
 		KeyShare:  base64.StdEncoding.EncodeToString(bundle),
 	}

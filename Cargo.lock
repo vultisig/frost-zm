@@ -1099,6 +1099,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "froeth-lib"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "frost-ceremony",
+ "frost-core",
+ "frost-ffi",
+ "frost-secp256k1",
+ "frost-session",
+ "getrandom 0.2.17",
+ "hex",
+ "hmac 0.12.1",
+ "k256",
+ "lazy_static",
+ "rand",
+ "sha2 0.10.9",
+ "tiny-keccak",
+ "zeroize",
+]
+
+[[package]]
+name = "froeth-wasm"
+version = "0.1.0"
+dependencies = [
+ "froeth-lib",
+ "frost-ceremony",
+ "frost-core",
+ "frost-secp256k1",
+ "frost-session",
+ "getrandom 0.2.17",
+ "hex",
+ "js-sys",
+ "rand",
+ "tiny-keccak",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "fromt-lib"
 version = "0.1.0"
 dependencies = [

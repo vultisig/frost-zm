@@ -12,6 +12,8 @@ members = [
     "crates/frost-session",
     "crates/frobt-lib",
     "crates/frobt-wasm",
+    "crates/froeth-lib",
+    "crates/froeth-wasm",
 ]
 
 [patch.crates-io]
