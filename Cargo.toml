@@ -10,6 +10,8 @@ members = [
     "crates/fromt-sdk",
     "crates/fromt-wasm",
     "crates/frost-session",
+    "crates/frobt-lib",
+    "crates/frobt-wasm",
 ]
 
 [patch.crates-io]

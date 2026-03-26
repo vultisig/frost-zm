@@ -45,6 +45,12 @@ var fromtMessages = map[int]string{
 	14: "address error",
 }
 
+var frobtMessages = map[int]string{
+	13: "ckd error",
+	14: "address error",
+	15: "tx error",
+}
+
 func ToError(prefix string, code int) error {
 	if code == LibOK {
 		return nil
@@ -56,6 +62,8 @@ func ToError(prefix string, code int) error {
 			msg, found = froztMessages[code]
 		case "fromt":
 			msg, found = fromtMessages[code]
+		case "frobt":
+			msg, found = frobtMessages[code]
 		}
 	}
 	if found {
