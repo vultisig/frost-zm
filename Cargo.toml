@@ -14,6 +14,7 @@ members = [
     "crates/frobt-wasm",
     "crates/froeth-lib",
     "crates/froeth-wasm",
+    "crates/test-vectors",
 ]
 
 [patch.crates-io]

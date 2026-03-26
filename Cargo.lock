@@ -3772,6 +3772,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-vectors"
+version = "0.1.0"
+dependencies = [
+ "bech32",
+ "curve25519-dalek",
+ "frobt-lib",
+ "froeth-lib",
+ "fromt-lib",
+ "frost-ceremony",
+ "frost-core",
+ "frost-ed25519",
+ "frost-ffi",
+ "frost-rerandomized",
+ "frost-secp256k1",
+ "frozt-lib",
+ "group",
+ "hex",
+ "jubjub",
+ "rand",
+ "reddsa",
+ "sapling-crypto",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
