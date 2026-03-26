@@ -155,4 +155,13 @@ lib_error froeth_derive_root_address(const go_slice *key_share,
 lib_error froeth_eth_address(const go_slice *verifying_key,
                              tss_buffer *out_address);
 
+/* KeyShare helpers */
+lib_error froeth_keyshare_public_key(const go_slice *key_share, tss_buffer *out_pub_key);
+lib_error froeth_keyshare_chain_code(const go_slice *key_share, tss_buffer *out_chain_code);
+lib_error froeth_keyshare_birthday(const go_slice *key_share, uint64_t *out_birthday);
+lib_error froeth_keyshare_identifier(const go_slice *key_share, uint16_t *out_id);
+lib_error froeth_private_key_to_public(const go_slice *private_key, tss_buffer *out_pub_key);
+lib_error froeth_encode_identifier(uint16_t id, tss_buffer *out_bytes);
+lib_error froeth_decode_identifier(const go_slice *id_bytes, uint16_t *out_id);
+
 #endif /* _FROETH_LIB_H */

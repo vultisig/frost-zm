@@ -429,3 +429,129 @@ macro_rules! define_frosty_ffi_handle_free {
         }
     };
 }
+
+#[macro_export]
+macro_rules! define_frosty_ffi_keyshare {
+    ($prefix:ident, $ciphersuite:ty, $meta_type:ty) => {
+        paste::paste! {
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _keyshare_public_key>](
+                key_share: Option<&frosty::go_slice>,
+                out_pub_key: Option<&mut frosty::tss_buffer>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let ks = key_share.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_pub_key.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let bundle = frosty::bundle::KeyShareBundle::<$ciphersuite, $meta_type>::deserialize(ks.as_slice())?;
+                    let vk_bytes = bundle.verifying_key_bytes()?;
+                    *out = frosty::tss_buffer::from_vec(vk_bytes);
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _keyshare_chain_code>](
+                key_share: Option<&frosty::go_slice>,
+                out_chain_code: Option<&mut frosty::tss_buffer>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let ks = key_share.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_chain_code.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let bundle = frosty::bundle::KeyShareBundle::<$ciphersuite, $meta_type>::deserialize(ks.as_slice())?;
+                    *out = frosty::tss_buffer::from_vec(bundle.metadata.chain_code.to_vec());
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _keyshare_birthday>](
+                key_share: Option<&frosty::go_slice>,
+                out_birthday: Option<&mut u64>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let ks = key_share.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_birthday.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let bundle = frosty::bundle::KeyShareBundle::<$ciphersuite, $meta_type>::deserialize(ks.as_slice())?;
+                    *out = bundle.metadata.birthday;
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _keyshare_identifier>](
+                key_share: Option<&frosty::go_slice>,
+                out_id: Option<&mut u16>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let ks = key_share.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_id.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let bundle = frosty::bundle::KeyShareBundle::<$ciphersuite, $meta_type>::deserialize(ks.as_slice())?;
+                    *out = frosty::identifier::identifier_to_u16::<$ciphersuite>(bundle.key_package.identifier())?;
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _private_key_to_public>](
+                private_key: Option<&frosty::go_slice>,
+                out_pub_key: Option<&mut frosty::tss_buffer>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let sk = private_key.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_pub_key.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let sk_slice = sk.as_slice();
+                    let sk_arr: &[u8; 32] = sk_slice.try_into()
+                        .map_err(|_| frosty::lib_error::LIB_SERIALIZATION_ERROR)?;
+                    let pub_key = frosty::ceremony::key_import::private_key_to_public::<$ciphersuite>(sk_arr)?;
+                    *out = frosty::tss_buffer::from_vec(pub_key);
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _encode_identifier>](
+                id: u16,
+                out_bytes: Option<&mut frosty::tss_buffer>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let out = out_bytes.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let ident = frost_core::Identifier::<$ciphersuite>::try_from(id)
+                        .map_err(|_| frosty::lib_error::LIB_INVALID_IDENTIFIER)?;
+                    let serialized = ident.serialize();
+                    let sl: &[u8] = serialized.as_ref();
+                    *out = frosty::tss_buffer::from_vec(sl.to_vec());
+
+                    Ok(())
+                })
+            }
+
+            #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+            pub extern "C" fn [<$prefix _decode_identifier>](
+                id_bytes: Option<&frosty::go_slice>,
+                out_id: Option<&mut u16>,
+            ) -> frosty::lib_error {
+                frosty::with_error_handler(|| {
+                    let bytes = id_bytes.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+                    let out = out_id.ok_or(frosty::lib_error::LIB_NULL_PTR)?;
+
+                    let ident = frost_core::Identifier::<$ciphersuite>::deserialize(bytes.as_slice())
+                        .map_err(|_| frosty::lib_error::LIB_INVALID_IDENTIFIER)?;
+                    *out = frosty::identifier::identifier_to_u16::<$ciphersuite>(&ident)?;
+
+                    Ok(())
+                })
+            }
+        }
+    };
+}

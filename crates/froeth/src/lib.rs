@@ -20,6 +20,7 @@ frosty::define_frosty_ffi_reshare!(froeth, S, ChainCodeMeta);
 frosty::define_frosty_ffi_ckd!(froeth, S, ChainCodeMeta);
 frosty::define_frosty_ffi_key_import!(froeth, S, ChainCodeMeta, 44, 60);
 frosty::define_frosty_ffi_handle_free!(froeth);
+frosty::define_frosty_ffi_keyshare!(froeth, S, ChainCodeMeta);
 
 #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
 pub extern "C" fn tss_buffer_free(buf: Option<&mut frosty::tss_buffer>) {

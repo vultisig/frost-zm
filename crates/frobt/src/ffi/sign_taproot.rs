@@ -91,3 +91,21 @@ pub extern "C" fn frobt_verify_taproot_signature(
             .map_err(|_| lib_error::LIB_SIGNING_ERROR)
     })
 }
+
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn frobt_compute_taproot_output_key(
+    verifying_key: Option<&go_slice>,
+    merkle_root: Option<&go_slice>,
+    out_output_key: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let vk = verifying_key.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_output_key.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let mr = merkle_root.map(|s| s.as_slice());
+        let output_key = crate::taproot::compute_taproot_output_key(vk.as_slice(), mr)?;
+        *out = tss_buffer::from_vec(output_key);
+
+        Ok(())
+    })
+}

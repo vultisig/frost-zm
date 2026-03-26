@@ -136,3 +136,45 @@ pub fn frosst_keyshare_public_key(bundle: &[u8]) -> Result<js_sys::Uint8Array, J
     let vk = b.verifying_key_bytes().map_err(to_js_err)?;
     Ok(js_sys::Uint8Array::from(vk.as_slice()))
 }
+
+#[wasm_bindgen]
+pub fn frosst_keyshare_chain_code(bundle: &[u8]) -> Result<js_sys::Uint8Array, JsValue> {
+    let b = frosstlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
+    Ok(js_sys::Uint8Array::from(b.metadata.chain_code.as_slice()))
+}
+
+#[wasm_bindgen]
+pub fn frosst_keyshare_birthday(bundle: &[u8]) -> Result<u64, JsValue> {
+    let b = frosstlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
+    Ok(b.metadata.birthday)
+}
+
+#[wasm_bindgen]
+pub fn frosst_keyshare_identifier(bundle: &[u8]) -> Result<u16, JsValue> {
+    let b = frosstlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
+    let id = frosty::identifier::identifier_to_u16::<frosstlib::S>(b.key_package.identifier())
+        .map_err(to_js_err)?;
+    Ok(id)
+}
+
+#[wasm_bindgen]
+pub fn frosst_private_key_to_public(private_key: &[u8]) -> Result<js_sys::Uint8Array, JsValue> {
+    let sk: &[u8; 32] = private_key.try_into().map_err(to_js_err)?;
+    let pk = frosty::ceremony::key_import::private_key_to_public::<frosstlib::S>(sk)
+        .map_err(to_js_err)?;
+    Ok(js_sys::Uint8Array::from(pk.as_slice()))
+}
+
+#[wasm_bindgen]
+pub fn frosst_encode_identifier(id: u16) -> Result<js_sys::Uint8Array, JsValue> {
+    let ident = frost_core::Identifier::<frosstlib::S>::try_from(id).map_err(to_js_err)?;
+    let serialized = ident.serialize();
+    let sl: &[u8] = serialized.as_ref();
+    Ok(js_sys::Uint8Array::from(sl))
+}
+
+#[wasm_bindgen]
+pub fn frosst_decode_identifier(id_bytes: &[u8]) -> Result<u16, JsValue> {
+    let ident = frost_core::Identifier::<frosstlib::S>::deserialize(id_bytes).map_err(to_js_err)?;
+    frosty::identifier::identifier_to_u16::<frosstlib::S>(&ident).map_err(to_js_err)
+}

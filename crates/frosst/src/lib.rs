@@ -18,6 +18,7 @@ frosty::define_frosty_ffi_dkg!(frosst, S, ChainCodeMeta);
 frosty::define_frosty_ffi_sign!(frosst, S, ChainCodeMeta);
 frosty::define_frosty_ffi_reshare!(frosst, S, ChainCodeMeta);
 frosty::define_frosty_ffi_key_import!(frosst, S, ChainCodeMeta, 44, 501);
+frosty::define_frosty_ffi_keyshare!(frosst, S, ChainCodeMeta);
 frosty::define_frosty_ffi_handle_free!(frosst);
 
 #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]

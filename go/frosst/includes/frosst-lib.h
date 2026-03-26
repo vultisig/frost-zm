@@ -88,4 +88,13 @@ lib_error frosst_key_import_part3(Handle secret, const go_slice *round1_packages
 lib_error frosst_derive_address(const go_slice *key_share, tss_buffer *out_address);
 lib_error frosst_pubkey_to_address(const go_slice *pubkey, tss_buffer *out_address);
 
+// KeyShare helpers
+lib_error frosst_keyshare_public_key(const go_slice *key_share, tss_buffer *out_pub_key);
+lib_error frosst_keyshare_chain_code(const go_slice *key_share, tss_buffer *out_chain_code);
+lib_error frosst_keyshare_birthday(const go_slice *key_share, uint64_t *out_birthday);
+lib_error frosst_keyshare_identifier(const go_slice *key_share, uint16_t *out_id);
+lib_error frosst_private_key_to_public(const go_slice *private_key, tss_buffer *out_pub_key);
+lib_error frosst_encode_identifier(uint16_t id, tss_buffer *out_bytes);
+lib_error frosst_decode_identifier(const go_slice *id_bytes, uint16_t *out_id);
+
 #endif

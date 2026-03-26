@@ -445,3 +445,90 @@ func EthAddress(verifyingKey []byte) (string, error) {
 
 	return string(copyBuffer(&outAddr)), nil
 }
+
+// KeyShare helpers
+
+func KeySharePublicKey(keyShare []byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	ks := cGoSlice(keyShare, pinner)
+	var outPK C.tss_buffer
+	defer C.tss_buffer_free(&outPK)
+	res := C.froeth_keyshare_public_key(ks, &outPK)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+	return copyBuffer(&outPK), nil
+}
+
+func KeyShareChainCode(keyShare []byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	ks := cGoSlice(keyShare, pinner)
+	var outCC C.tss_buffer
+	defer C.tss_buffer_free(&outCC)
+	res := C.froeth_keyshare_chain_code(ks, &outCC)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+	return copyBuffer(&outCC), nil
+}
+
+func KeyShareBirthday(keyShare []byte) (uint64, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	ks := cGoSlice(keyShare, pinner)
+	var birthday C.uint64_t
+	res := C.froeth_keyshare_birthday(ks, &birthday)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+	return uint64(birthday), nil
+}
+
+func KeyShareIdentifier(keyShare []byte) (uint16, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	ks := cGoSlice(keyShare, pinner)
+	var id C.uint16_t
+	res := C.froeth_keyshare_identifier(ks, &id)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+	return uint16(id), nil
+}
+
+func PrivateKeyToPublic(privateKey []byte) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	sk := cGoSlice(privateKey, pinner)
+	var outPK C.tss_buffer
+	defer C.tss_buffer_free(&outPK)
+	res := C.froeth_private_key_to_public(sk, &outPK)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+	return copyBuffer(&outPK), nil
+}
+
+func EncodeIdentifier(id uint16) ([]byte, error) {
+	var out C.tss_buffer
+	defer C.tss_buffer_free(&out)
+	res := C.froeth_encode_identifier(C.uint16_t(id), &out)
+	if res != 0 {
+		return nil, mapLibError(int(res))
+	}
+	return copyBuffer(&out), nil
+}
+
+func DecodeIdentifier(idBytes []byte) (uint16, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+	ib := cGoSlice(idBytes, pinner)
+	var id C.uint16_t
+	res := C.froeth_decode_identifier(ib, &id)
+	if res != 0 {
+		return 0, mapLibError(int(res))
+	}
+	return uint16(id), nil
+}

@@ -292,3 +292,87 @@ func PubkeyToAddress(pubkey []byte) (string, error) {
 	}
 	return string(copyBuffer(&addr)), nil
 }
+
+// KeyShare helpers
+
+func KeySharePublicKey(keyShare []byte) ([]byte, error) {
+	ks, p1 := cGoSlice(keyShare)
+	defer p1.Unpin()
+	var pk C.tss_buffer
+	rc := C.frosst_keyshare_public_key(&ks, &pk)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&pk), nil
+}
+
+func KeyShareChainCode(keyShare []byte) ([]byte, error) {
+	ks, p1 := cGoSlice(keyShare)
+	defer p1.Unpin()
+	var cc C.tss_buffer
+	rc := C.frosst_keyshare_chain_code(&ks, &cc)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&cc), nil
+}
+
+func KeyShareBirthday(keyShare []byte) (uint64, error) {
+	ks, p1 := cGoSlice(keyShare)
+	defer p1.Unpin()
+	var birthday C.uint64_t
+	rc := C.frosst_keyshare_birthday(&ks, &birthday)
+	err := toError(int(rc))
+	if err != nil {
+		return 0, err
+	}
+	return uint64(birthday), nil
+}
+
+func KeyShareIdentifier(keyShare []byte) (uint16, error) {
+	ks, p1 := cGoSlice(keyShare)
+	defer p1.Unpin()
+	var id C.uint16_t
+	rc := C.frosst_keyshare_identifier(&ks, &id)
+	err := toError(int(rc))
+	if err != nil {
+		return 0, err
+	}
+	return uint16(id), nil
+}
+
+func PrivateKeyToPublic(privateKey []byte) ([]byte, error) {
+	sk, p1 := cGoSlice(privateKey)
+	defer p1.Unpin()
+	var pk C.tss_buffer
+	rc := C.frosst_private_key_to_public(&sk, &pk)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&pk), nil
+}
+
+func EncodeIdentifier(id uint16) ([]byte, error) {
+	var out C.tss_buffer
+	rc := C.frosst_encode_identifier(C.uint16_t(id), &out)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&out), nil
+}
+
+func DecodeIdentifier(idBytes []byte) (uint16, error) {
+	ib, p1 := cGoSlice(idBytes)
+	defer p1.Unpin()
+	var id C.uint16_t
+	rc := C.frosst_decode_identifier(&ib, &id)
+	err := toError(int(rc))
+	if err != nil {
+		return 0, err
+	}
+	return uint16(id), nil
+}

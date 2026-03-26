@@ -1069,6 +1069,7 @@ dependencies = [
  "frost-ffi",
  "frost-secp256k1",
  "frost-secp256k1-tr",
+ "frost-session",
  "frosty",
  "getrandom 0.2.17",
  "hex",

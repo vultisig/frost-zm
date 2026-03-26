@@ -14,6 +14,7 @@ pub mod taproot;
 pub mod ffi;
 pub mod ceremony;
 pub mod keyshare;
+pub mod session;
 
 frosty::define_frosty_ffi_dkg!(frobt, S, ChainCodeMeta);
 frosty::define_frosty_ffi_sign!(frobt, S, ChainCodeMeta);
@@ -21,6 +22,7 @@ frosty::define_frosty_ffi_reshare!(frobt, S, ChainCodeMeta);
 frosty::define_frosty_ffi_ckd!(frobt, S, ChainCodeMeta);
 frosty::define_frosty_ffi_key_import!(frobt, S, ChainCodeMeta, 86, 0);
 frosty::define_frosty_ffi_handle_free!(frobt);
+frosty::define_frosty_ffi_keyshare!(frobt, S, ChainCodeMeta);
 
 #[cfg(test)]
 pub(crate) mod tests {

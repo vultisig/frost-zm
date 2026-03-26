@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 frosty = { path = "../frosty" }
 frost-ffi = { path = "../frost-ffi" }
 frost-ceremony = { path = "../frost-ceremony" }
+frost-session = { path = "../frost-session" }
 frost-core = { version = "2", features = ["internals"] }
 frost-secp256k1 = "=2.2.0"
 k256 = { version = "0.13", features = ["arithmetic"] }
