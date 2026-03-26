@@ -9,9 +9,10 @@ path = "src/main.rs"
 
 [dependencies]
 frozt-lib = { path = "../frozt-lib" }
-fromt-lib = { path = "../fromt-lib" }
-frobt-lib = { path = "../frobt-lib" }
-froeth-lib = { path = "../froeth-lib" }
+fromtlib = { path = "../fromt", package = "fromt" }
+frobtlib = { path = "../frobt", package = "frobt" }
+froethlib = { path = "../froeth", package = "froeth" }
+frosty = { path = "../frosty" }
 frost-ceremony = { path = "../frost-ceremony" }
 frost-ffi = { path = "../frost-ffi" }
 frost-core = { version = "2.2", features = ["internals"] }

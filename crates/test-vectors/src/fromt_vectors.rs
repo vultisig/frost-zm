@@ -40,7 +40,7 @@ pub fn generate() -> Value {
     let import_vk_arr: [u8; 32] = import_vk_slice[..32].try_into().unwrap();
     let import_addr = fromtlib::monero::address::derive_address(
         &import_vk_arr,
-        &import_bundle0.view_key,
+        &import_bundle0.metadata.view_key,
         0,
     )
     .unwrap();
@@ -50,7 +50,7 @@ pub fn generate() -> Value {
     for (account, index) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
         let sub = fromtlib::monero::subaddress::derive_subaddress(
             &import_vk_arr,
-            &import_bundle0.view_key,
+            &import_bundle0.metadata.view_key,
             account,
             index,
             0,
@@ -151,7 +151,7 @@ pub fn generate() -> Value {
                 "3": hex::encode(&import_bundles[2]),
             },
             "verifying_key_hex": hex::encode(import_vk_slice),
-            "aggregated_view_key_hex": hex::encode(&import_bundle0.view_key),
+            "aggregated_view_key_hex": hex::encode(&import_bundle0.metadata.view_key),
         },
 
         "dkg": {
@@ -161,7 +161,7 @@ pub fn generate() -> Value {
                 "3": hex::encode(&dkg_bundles[2]),
             },
             "verifying_key_hex": hex::encode(&dkg_vk as &[u8]),
-            "aggregated_view_key_hex": hex::encode(&dkg_bundle0.view_key),
+            "aggregated_view_key_hex": hex::encode(&dkg_bundle0.metadata.view_key),
         },
 
         "addresses": {

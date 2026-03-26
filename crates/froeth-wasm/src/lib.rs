@@ -43,7 +43,12 @@ pub fn froeth_keyshare_bundle_pack(
     let pkp = frost_core::keys::PublicKeyPackage::<S>::deserialize(pub_key_package)
         .map_err(to_js_err)?;
 
-    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(kp, pkp, cc, network, birthday);
+    let meta = froethlib::keyshare::bundle::ChainCodeMeta {
+        chain_code: cc,
+        network,
+        birthday,
+    };
+    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(kp, pkp, meta);
     let bytes = bundle.serialize().map_err(to_js_err)?;
     Ok(js_sys::Uint8Array::from(bytes.as_slice()))
 }
@@ -58,17 +63,17 @@ pub fn froeth_keyshare_bundle_unpack(bundle: &[u8]) -> Result<JsValue, JsError> 
     let obj = js_obj();
     set_bytes(&obj, "keyPackage", &kp_bytes);
     set_bytes(&obj, "pubKeyPackage", &pkp_bytes);
-    set_bytes(&obj, "chainCode", &b.chain_code);
+    set_bytes(&obj, "chainCode", &b.metadata.chain_code);
     js_sys::Reflect::set(
         &obj,
         &JsValue::from_str("network"),
-        &JsValue::from(b.network),
+        &JsValue::from(b.metadata.network),
     )
     .unwrap();
     js_sys::Reflect::set(
         &obj,
         &JsValue::from_str("birthday"),
-        &JsValue::from(b.birthday as f64),
+        &JsValue::from(b.metadata.birthday as f64),
     )
     .unwrap();
     Ok(obj.into())
@@ -91,19 +96,19 @@ pub fn froeth_keyshare_bundle_key_package(bundle: &[u8]) -> Result<js_sys::Uint8
 #[wasm_bindgen]
 pub fn froeth_keyshare_bundle_chain_code(bundle: &[u8]) -> Result<js_sys::Uint8Array, JsError> {
     let b = froethlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
-    Ok(js_sys::Uint8Array::from(b.chain_code.as_slice()))
+    Ok(js_sys::Uint8Array::from(b.metadata.chain_code.as_slice()))
 }
 
 #[wasm_bindgen]
 pub fn froeth_keyshare_bundle_network(bundle: &[u8]) -> Result<u8, JsError> {
     let b = froethlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
-    Ok(b.network)
+    Ok(b.metadata.network)
 }
 
 #[wasm_bindgen]
 pub fn froeth_keyshare_bundle_birthday(bundle: &[u8]) -> Result<u64, JsError> {
     let b = froethlib::keyshare::bundle::KeyShareBundle::deserialize(bundle).map_err(to_js_err)?;
-    Ok(b.birthday)
+    Ok(b.metadata.birthday)
 }
 
 #[wasm_bindgen]

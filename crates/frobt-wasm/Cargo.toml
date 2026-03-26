@@ -8,7 +8,7 @@ name = "frobtwasm"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-frobt-lib = { path = "../frobt-lib", default-features = false }
+frobtlib = { path = "../frobt", default-features = false, package = "frobt" }
 frost-session = { path = "../frost-session" }
 frost-ceremony = { path = "../frost-ceremony" }
 wasm-bindgen = "0.2"

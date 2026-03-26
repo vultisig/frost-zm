@@ -1,0 +1,17 @@
+[package]
+name = "frosty"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+test-helpers = []
+
+[dependencies]
+frost-ffi = { path = "../frost-ffi" }
+frost-ceremony = { path = "../frost-ceremony" }
+frost-core = { version = "2", features = ["internals"] }
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+paste = "1"
+bitcoin = "0.32"

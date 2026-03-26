@@ -8,7 +8,7 @@ name = "fromtsdk"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-fromt-lib = { path = "../fromt-lib", features = ["rpc"] }
+fromtlib = { path = "../fromt", features = ["rpc"], package = "fromt" }
 frost-ffi = { path = "../frost-ffi" }
 
 monero-simple-request-rpc = { git = "https://github.com/monero-oxide/monero-oxide", default-features = false }

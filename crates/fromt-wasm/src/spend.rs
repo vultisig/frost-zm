@@ -199,7 +199,7 @@ pub fn fromt_build_signable_tx(
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
     let view_pair = spend::view_pair_from_bundle(&bundle).map_err(to_js_err)?;
 
-    let network = match bundle.network {
+    let network = match bundle.metadata.network {
         0 => monero_wallet::address::Network::Mainnet,
         1 => monero_wallet::address::Network::Testnet,
         2 => monero_wallet::address::Network::Stagenet,

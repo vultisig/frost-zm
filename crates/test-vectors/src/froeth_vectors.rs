@@ -127,7 +127,7 @@ pub fn generate() -> Value {
                 "3": hex::encode(&import_bundles[2]),
             },
             "verifying_key_hex": hex::encode(&import_vk),
-            "chain_code_hex": hex::encode(&import_bundle0.chain_code),
+            "chain_code_hex": hex::encode(&import_bundle0.metadata.chain_code),
         },
 
         "dkg": {
@@ -137,7 +137,7 @@ pub fn generate() -> Value {
                 "3": hex::encode(&dkg_bundles[2]),
             },
             "verifying_key_hex": hex::encode(&dkg_vk),
-            "chain_code_hex": hex::encode(&dkg_bundle0.chain_code),
+            "chain_code_hex": hex::encode(&dkg_bundle0.metadata.chain_code),
         },
 
         "addresses": {

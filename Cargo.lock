@@ -1060,7 +1060,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "frobt-lib"
+name = "frobt"
 version = "0.1.0"
 dependencies = [
  "bitcoin",
@@ -1069,22 +1069,21 @@ dependencies = [
  "frost-ffi",
  "frost-secp256k1",
  "frost-secp256k1-tr",
- "frost-session",
+ "frosty",
  "getrandom 0.2.17",
  "hex",
  "hmac 0.12.1",
  "k256",
- "lazy_static",
+ "paste",
  "rand",
  "sha2 0.10.9",
- "zeroize",
 ]
 
 [[package]]
 name = "frobt-wasm"
 version = "0.1.0"
 dependencies = [
- "frobt-lib",
+ "frobt",
  "frost-ceremony",
  "frost-core",
  "frost-secp256k1",
@@ -1099,31 +1098,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "froeth-lib"
+name = "froeth"
 version = "0.1.0"
 dependencies = [
- "bitcoin",
  "frost-ceremony",
  "frost-core",
  "frost-ffi",
  "frost-secp256k1",
- "frost-session",
+ "frosty",
  "getrandom 0.2.17",
  "hex",
  "hmac 0.12.1",
  "k256",
- "lazy_static",
+ "paste",
  "rand",
  "sha2 0.10.9",
  "tiny-keccak",
- "zeroize",
 ]
 
 [[package]]
 name = "froeth-wasm"
 version = "0.1.0"
 dependencies = [
- "froeth-lib",
+ "froeth",
  "frost-ceremony",
  "frost-core",
  "frost-secp256k1",
@@ -1138,7 +1135,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fromt-lib"
+name = "fromt"
 version = "0.1.0"
 dependencies = [
  "curve25519-dalek",
@@ -1149,6 +1146,7 @@ dependencies = [
  "frost-ed25519",
  "frost-ffi",
  "frost-session",
+ "frosty",
  "getrandom 0.2.17",
  "hex",
  "lazy_static",
@@ -1159,6 +1157,7 @@ dependencies = [
  "monero-oxide",
  "monero-simple-request-rpc",
  "monero-wallet",
+ "paste",
  "rand",
  "reqwest",
  "serde_json",
@@ -1172,7 +1171,7 @@ dependencies = [
 name = "fromt-sdk"
 version = "0.1.0"
 dependencies = [
- "fromt-lib",
+ "fromt",
  "frost-ffi",
  "getrandom 0.2.17",
  "monero-simple-request-rpc",
@@ -1185,11 +1184,12 @@ name = "fromt-wasm"
 version = "0.1.0"
 dependencies = [
  "curve25519-dalek",
- "fromt-lib",
+ "fromt",
  "frost-ceremony",
  "frost-core",
  "frost-ed25519",
  "frost-session",
+ "frosty",
  "getrandom 0.2.17",
  "hex",
  "js-sys",
@@ -1304,6 +1304,20 @@ dependencies = [
  "frost-core",
  "frost-ffi",
  "rand",
+]
+
+[[package]]
+name = "frosty"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "frost-ceremony",
+ "frost-core",
+ "frost-ffi",
+ "hmac 0.12.1",
+ "paste",
+ "rand",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -2744,6 +2758,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3777,15 +3797,16 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "curve25519-dalek",
- "frobt-lib",
- "froeth-lib",
- "fromt-lib",
+ "frobt",
+ "froeth",
+ "fromt",
  "frost-ceremony",
  "frost-core",
  "frost-ed25519",
  "frost-ffi",
  "frost-rerandomized",
  "frost-secp256k1",
+ "frosty",
  "frozt-lib",
  "group",
  "hex",

@@ -382,21 +382,21 @@ pub fn frobt_keyshare_public_key(key_share: &[u8]) -> Result<Vec<u8>, JsValue> {
 pub fn frobt_keyshare_chain_code(key_share: &[u8]) -> Result<Vec<u8>, JsValue> {
     let bundle = frobtlib::keyshare::bundle::KeyShareBundle::deserialize(key_share)
         .map_err(to_js_err)?;
-    Ok(bundle.chain_code.to_vec())
+    Ok(bundle.metadata.chain_code.to_vec())
 }
 
 #[wasm_bindgen]
 pub fn frobt_keyshare_birthday(key_share: &[u8]) -> Result<u64, JsValue> {
     let bundle = frobtlib::keyshare::bundle::KeyShareBundle::deserialize(key_share)
         .map_err(to_js_err)?;
-    Ok(bundle.birthday)
+    Ok(bundle.metadata.birthday)
 }
 
 #[wasm_bindgen]
 pub fn frobt_keyshare_network(key_share: &[u8]) -> Result<u8, JsValue> {
     let bundle = frobtlib::keyshare::bundle::KeyShareBundle::deserialize(key_share)
         .map_err(to_js_err)?;
-    Ok(bundle.network)
+    Ok(bundle.metadata.network)
 }
 
 // === Session-based Ceremonies ===
@@ -482,12 +482,15 @@ async fn frobt_dkg_run(
 
     let chain_code = aggregate_cc_shares(&cc_share_bytes, &cc_shares_map)?;
 
-    let bundle = frobtlib::keyshare::bundle::KeyShareBundle::new(
-        key_package,
-        pub_key_package,
+    let meta = frobtlib::keyshare::bundle::ChainCodeMeta {
         chain_code,
         network,
         birthday,
+    };
+    let bundle = frobtlib::keyshare::bundle::KeyShareBundle::new(
+        key_package,
+        pub_key_package,
+        meta,
     );
 
     bundle.serialize()
@@ -616,12 +619,15 @@ async fn frobt_key_import_run(
 
     let chain_code = aggregate_import_cc(&cc_share_bytes, &cc_shares_map)?;
 
-    let bundle = frobtlib::keyshare::bundle::KeyShareBundle::new(
-        key_package,
-        pub_key_package,
+    let meta = frobtlib::keyshare::bundle::ChainCodeMeta {
         chain_code,
         network,
         birthday,
+    };
+    let bundle = frobtlib::keyshare::bundle::KeyShareBundle::new(
+        key_package,
+        pub_key_package,
+        meta,
     );
 
     bundle.serialize()

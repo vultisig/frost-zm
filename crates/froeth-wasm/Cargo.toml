@@ -14,7 +14,7 @@ frost-secp256k1 = "=2.2.0"
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 hex = "0.4"
-froeth-lib = { path = "../froeth-lib", default-features = false, features = [] }
+froethlib = { path = "../froeth", default-features = false, package = "froeth", features = [] }
 frost-session = { path = "../frost-session" }
 frost-ceremony = { path = "../frost-ceremony" }
 tiny-keccak = { version = "2", features = ["keccak"] }

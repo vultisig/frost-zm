@@ -123,12 +123,15 @@ async fn froeth_dkg_run(
 
     let chain_code = aggregate_cc_shares(&cc_share_bytes, &cc_shares)?;
 
-    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(
-        key_package,
-        pub_key_package,
+    let meta = froethlib::keyshare::bundle::ChainCodeMeta {
         chain_code,
         network,
         birthday,
+    };
+    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(
+        key_package,
+        pub_key_package,
+        meta,
     );
 
     bundle.serialize()
@@ -221,12 +224,15 @@ async fn froeth_key_import_run(
         }
     }
 
-    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(
-        key_package,
-        pub_key_package,
+    let meta = froethlib::keyshare::bundle::ChainCodeMeta {
         chain_code,
         network,
         birthday,
+    };
+    let bundle = froethlib::keyshare::bundle::KeyShareBundle::new(
+        key_package,
+        pub_key_package,
+        meta,
     );
 
     bundle.serialize()
