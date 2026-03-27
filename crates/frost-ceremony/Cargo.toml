@@ -8,3 +8,6 @@ frost-ffi = { path = "../frost-ffi" }
 frost-session = { path = "../frost-session" }
 frost-core = { version = "2", features = ["internals"] }
 rand = "0.8"
+
+[dev-dependencies]
+frost-ed25519 = "2.2"

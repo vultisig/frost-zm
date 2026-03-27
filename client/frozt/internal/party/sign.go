@@ -48,7 +48,7 @@ func (n *Node) runSign(ctx context.Context) error {
 		signerParties = n.Config.Parties
 	}
 
-	result, err := orchestration.RunSign(
+	result, ceremonyResult, err := orchestration.RunSign(
 		ctx,
 		n.Client,
 		n.Config.SessionID,
@@ -60,6 +60,10 @@ func (n *Node) runSign(ctx context.Context) error {
 		signerParties,
 	)
 	if err != nil {
+		if ceremonyResult != nil && ceremonyResult.Blame != nil {
+			log.Printf("[%s] Blame result: agreed=%v blamed=%s type=%s",
+				n.Config.PartyID, ceremonyResult.Blame.Agreed, ceremonyResult.Blame.BlamedParty, ceremonyResult.Blame.BlameType)
+		}
 		return fmt.Errorf("sign failed: %w", err)
 	}
 

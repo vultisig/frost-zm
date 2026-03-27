@@ -98,7 +98,7 @@ pub fn key_import_part3(
 
     let (key_package, pub_key_package) =
         frost_core::keys::dkg::part3(&secret.frost_secret, &r1_pkgs, &r2_pkgs)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let vk_bytes = pub_key_package.verifying_key().serialize().map_err(ser_err)?;
     if <[u8]>::ne(vk_bytes.as_ref(), expected_vk) {

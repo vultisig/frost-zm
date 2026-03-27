@@ -48,7 +48,7 @@ async fn fromt_dkg_run(
 
         let (secret, package) =
             dkg::part1::<E, _>(ident, max_signers, min_signers, &mut rng)
-                .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+                .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
         let mut bytes = package.serialize().map_err(dkg_ser_err)?;
 
         let vk_share: Scalar = F::random(&mut rng);
@@ -86,7 +86,7 @@ async fn fromt_dkg_run(
     }
 
     let (secret2, r2_map) =
-        dkg::part2(secret1, &r1_frost_map).map_err(|_| lib_error::LIB_DKG_ERROR)?;
+        dkg::part2(secret1, &r1_frost_map).map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     for (recipient, pkg) in &r2_map {
         let recipient_u16 = frost_ceremony::session_dkg::lookup_u16::<E>(&id_map, recipient)?;
@@ -105,7 +105,7 @@ async fn fromt_dkg_run(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret2, &r1_frost_map, &r2_received)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let mut vk_share_local = vk_share_bytes;
     let mut vk_sum = aggregate_view_key_shares(&vk_share_local, &vk_shares_map)?;
@@ -658,7 +658,7 @@ async fn fromt_key_import_run(
     }
 
     let (secret2, r2_map) =
-        dkg::part2(secret1, &r1_frost_map).map_err(|_| lib_error::LIB_DKG_ERROR)?;
+        dkg::part2(secret1, &r1_frost_map).map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     for (recipient, pkg) in &r2_map {
         let recipient_u16 = frost_ceremony::session_dkg::lookup_u16::<E>(&id_map, recipient)?;
@@ -677,7 +677,7 @@ async fn fromt_key_import_run(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret2, &r1_frost_map, &r2_received)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     if is_seed_holder {
         let expected_vk: Vec<u8> = pub_key_package.verifying_key().serialize().map_err(dkg_ser_err)?;

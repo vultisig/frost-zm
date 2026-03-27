@@ -23,17 +23,17 @@ func RunReshare(
 	oldIdentifiers []uint16,
 	expectedVK []byte,
 	allParties []string,
-) (*ReshareResult, error) {
+) (*ReshareResult, *CeremonyResult, error) {
 	parties := BuildPartyInfo(allParties)
 
 	setupBytes, err := fromt.ReshareSetupMsgNew(maxSigners, minSigners, parties, oldIdentifiers, expectedVK)
 	if err != nil {
-		return nil, fmt.Errorf("reshare setup: %w", err)
+		return nil, nil, fmt.Errorf("reshare setup: %w", err)
 	}
 
 	sess, err := fromt.ReshareSessionFromSetup(setupBytes, []byte(partyID), oldKeyShare)
 	if err != nil {
-		return nil, fmt.Errorf("reshare session: %w", err)
+		return nil, nil, fmt.Errorf("reshare session: %w", err)
 	}
 	defer fromt.ReshareSessionFree(sess)
 
@@ -43,16 +43,17 @@ func RunReshare(
 		MsgReceiver: func(msg []byte, i int) ([]byte, error) { return fromt.ReshareSessionMsgReceiver(sess, msg, i) },
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reshare session run: %w", err)
+		blame := handleBlame(ctx, client, sessionID, partyID, allParties, err)
+		return nil, blame, fmt.Errorf("reshare session run: %w", err)
 	}
 
 	kp, pk, err := fromt.ReshareSessionResult(sess)
 	if err != nil {
-		return nil, fmt.Errorf("reshare result: %w", err)
+		return nil, nil, fmt.Errorf("reshare result: %w", err)
 	}
 
 	return &ReshareResult{
 		KeyShare: kp,
 		PubKey:   pk,
-	}, nil
+	}, nil, nil
 }

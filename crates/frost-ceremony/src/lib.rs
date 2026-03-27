@@ -1,3 +1,4 @@
+pub mod blame;
 pub mod dkg;
 pub mod reshare;
 pub mod sign;

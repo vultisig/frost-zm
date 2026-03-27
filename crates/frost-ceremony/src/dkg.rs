@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use frost_core::{Ciphersuite, Identifier, keys::dkg};
 use frost_ffi::{codec, errors::lib_error};
 
+use crate::blame::frost_err_to_blame;
+
 pub(crate) fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
     #[cfg(debug_assertions)]
     eprintln!("frost-ceremony serialization error: {:?}", e);
@@ -65,7 +67,7 @@ pub fn dkg_part1<C: Ciphersuite>(
     let mut rng = rand::thread_rng();
     let (secret, package) =
         dkg::part1::<C, _>(ident, max_signers, min_signers, &mut rng)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let pkg_bytes = package.serialize().map_err(ser_err)?;
 
@@ -79,7 +81,7 @@ pub fn dkg_part2<C: Ciphersuite>(
     let r1_pkgs = decode_r1_map::<C>(round1_packages_data)?;
 
     let (secret2, r2_pkgs) =
-        dkg::part2(secret, &r1_pkgs).map_err(|_| lib_error::LIB_DKG_ERROR)?;
+        dkg::part2(secret, &r1_pkgs).map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let r2_bytes = encode_r2_map::<C>(&r2_pkgs)?;
 
@@ -96,7 +98,7 @@ pub fn dkg_part3<C: Ciphersuite>(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret, &r1_pkgs, &r2_pkgs)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     Ok((key_package, pub_key_package))
 }

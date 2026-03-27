@@ -33,7 +33,7 @@ func (n *Node) runKeyImport(ctx context.Context) error {
 		config = &orchestration.KeyImportConfig{}
 	}
 
-	result, err := orchestration.RunKeyImport(
+	result, ceremonyResult, err := orchestration.RunKeyImport(
 		ctx,
 		n.Client,
 		n.Config.SessionID,
@@ -45,6 +45,10 @@ func (n *Node) runKeyImport(ctx context.Context) error {
 		n.Config.Parties,
 	)
 	if err != nil {
+		if ceremonyResult != nil && ceremonyResult.Blame != nil {
+			log.Printf("[%s] Blame result: agreed=%v blamed=%s type=%s",
+				n.Config.PartyID, ceremonyResult.Blame.Agreed, ceremonyResult.Blame.BlamedParty, ceremonyResult.Blame.BlameType)
+		}
 		return fmt.Errorf("key import failed: %w", err)
 	}
 

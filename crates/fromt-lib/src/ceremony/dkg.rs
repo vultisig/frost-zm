@@ -129,7 +129,7 @@ pub fn dkg_part2(
 
     let (secret2, r2_pkgs) =
         dkg::part2(secret.frost_secret, &r1_pkgs)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let r2_bytes = encode_r2_map(&r2_pkgs)?;
 
@@ -153,7 +153,7 @@ pub fn dkg_part3(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret.frost_secret, &r1_pkgs, &r2_pkgs)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let mut vk_sum = aggregate_view_key_shares(&secret.view_key_share, &vk_shares)?;
 

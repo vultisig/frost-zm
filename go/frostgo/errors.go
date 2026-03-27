@@ -19,6 +19,8 @@ const (
 	LibSaplingError      = 13
 	LibCkdError          = 13
 	LibAddressError      = 14
+
+	LibBlame = 100
 )
 
 var sharedErrorMessages = map[int]string{
@@ -34,6 +36,7 @@ var sharedErrorMessages = map[int]string{
 	LibSigningError:      "signing error",
 	LibReshareError:      "reshare error",
 	LibKeyImportError:    "key import error",
+	LibBlame:             "blame",
 }
 
 var froztMessages = map[int]string{
@@ -43,6 +46,10 @@ var froztMessages = map[int]string{
 var fromtMessages = map[int]string{
 	13: "ckd error",
 	14: "address error",
+}
+
+func IsBlameError(code int) bool {
+	return code == LibBlame
 }
 
 func ToError(prefix string, code int) error {

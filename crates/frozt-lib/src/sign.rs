@@ -123,7 +123,7 @@ pub extern "C" fn frozt_sign(
             .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
 
         let share = frost_rerandomized::sign(&sp, &nonces, &kp, randomizer)
-            .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+            .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
         let share_bytes = share.serialize();
 
@@ -164,7 +164,7 @@ pub extern "C" fn frozt_sign_aggregate(
             &pkp,
             &randomized_params,
         )
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
         let sig_bytes = signature.serialize().map_err(ser_err)?;
 
