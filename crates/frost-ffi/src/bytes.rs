@@ -88,6 +88,10 @@ impl tss_buffer {
     }
 }
 
+// SAFETY: tss_buffer owns a heap-allocated Box<[u8]> (via from_vec / From<Vec<u8>>).
+// Raw pointer access is confined to methods that require &self or consume self,
+// so no aliased mutation is possible. Sending the buffer to another thread is
+// equivalent to sending a Vec<u8>, which is itself Send.
 unsafe impl Send for tss_buffer {}
 
 impl Deref for tss_buffer {

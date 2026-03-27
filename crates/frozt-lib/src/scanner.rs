@@ -5,6 +5,8 @@ use std::num::NonZeroU32;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "scanner")]
+use orchard::keys::FullViewingKey as OrchardFvk;
+#[cfg(feature = "scanner")]
 use sapling_crypto::zip32::DiversifiableFullViewingKey;
 
 #[cfg(feature = "scanner")]
@@ -34,31 +36,74 @@ use crate::errors::lib_error;
 
 #[cfg(feature = "scanner")]
 const BATCH_SIZE: usize = 10000;
+#[cfg(feature = "scanner")]
+const SAPLING_DFVK_LEN: usize = 128;
+#[cfg(feature = "scanner")]
+const ORCHARD_FVK_LEN: usize = 96;
 
 #[cfg(feature = "scanner")]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScanResult {
     pub spendable_balance: u64,
+    pub sapling_balance: u64,
+    pub orchard_balance: u64,
     pub chain_height: u64,
     pub scanned_height: u64,
 }
 
 #[cfg(feature = "scanner")]
 pub fn ufvk_from_dfvk_bytes(dfvk_bytes: &[u8]) -> Result<UnifiedFullViewingKey, lib_error> {
-    if dfvk_bytes.len() != 128 {
+    ufvk_from_components(Some(dfvk_bytes), None)
+}
+
+#[cfg(feature = "scanner")]
+pub fn ufvk_from_components(
+    sapling_dfvk_bytes: Option<&[u8]>,
+    orchard_fvk_bytes: Option<&[u8]>,
+) -> Result<UnifiedFullViewingKey, lib_error> {
+    let sapling = match sapling_dfvk_bytes {
+        Some(bytes) => {
+            if bytes.len() != SAPLING_DFVK_LEN {
+                return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
+            }
+            let arr: [u8; SAPLING_DFVK_LEN] = bytes.try_into().unwrap();
+            Some(
+                DiversifiableFullViewingKey::from_bytes(&arr)
+                    .ok_or(lib_error::LIB_SAPLING_ERROR)?
+            )
+        }
+        None => None,
+    };
+
+    let orchard = match orchard_fvk_bytes {
+        Some(bytes) => {
+            if bytes.len() != ORCHARD_FVK_LEN {
+                return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
+            }
+            let arr: [u8; ORCHARD_FVK_LEN] = bytes.try_into().unwrap();
+            Some(
+                OrchardFvk::from_bytes(&arr)
+                    .ok_or(lib_error::LIB_ORCHARD_ERROR)?
+            )
+        }
+        None => None,
+    };
+
+    if sapling.is_none() && orchard.is_none() {
         return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
     }
 
-    let arr: [u8; 128] = dfvk_bytes.try_into().unwrap();
-    let dfvk = DiversifiableFullViewingKey::from_bytes(&arr)
-        .ok_or(lib_error::LIB_SAPLING_ERROR)?;
-
-    UnifiedFullViewingKey::new(None, Some(dfvk), None)
+    UnifiedFullViewingKey::new(None, sapling, orchard)
         .map_err(|_| lib_error::LIB_SAPLING_ERROR)
 }
 
 #[cfg(feature = "scanner")]
-pub async fn scan_async(dfvk_bytes: &[u8], url: &str, birthday: u32) -> Result<ScanResult, lib_error> {
+pub async fn scan_full_async(
+    sapling_dfvk_bytes: Option<&[u8]>,
+    orchard_fvk_bytes: Option<&[u8]>,
+    url: &str,
+    birthday: u32,
+) -> Result<ScanResult, lib_error> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .ok();
@@ -77,7 +122,7 @@ pub async fn scan_async(dfvk_bytes: &[u8], url: &str, birthday: u32) -> Result<S
     let mut db: MemoryWalletDb<MainNetwork> = MemoryWalletDb::new(network, BATCH_SIZE);
     let db_cache = MemBlockCache::new();
 
-    let ufvk = ufvk_from_dfvk_bytes(dfvk_bytes)?;
+    let ufvk = ufvk_from_components(sapling_dfvk_bytes, orchard_fvk_bytes)?;
 
     let treestate = client
         .get_tree_state(service::BlockId {
@@ -124,27 +169,35 @@ pub async fn scan_async(dfvk_bytes: &[u8], url: &str, birthday: u32) -> Result<S
     )
     .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
 
-    let mut spendable: u64 = 0;
+    let mut sapling_total: u64 = 0;
+    let mut orchard_total: u64 = 0;
     let summary = db
         .get_wallet_summary(confirmations)
         .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
     if let Some(summary) = &summary {
         for (_account_id, balance) in summary.account_balances() {
-            spendable += balance.sapling_balance().spendable_value().into_u64();
-            spendable += balance.orchard_balance().spendable_value().into_u64();
+            sapling_total += balance.sapling_balance().spendable_value().into_u64();
+            orchard_total += balance.orchard_balance().spendable_value().into_u64();
         }
     }
 
     let scanned_height = summary
         .as_ref()
-        .and_then(|s| Some(u64::from(u32::from(s.fully_scanned_height()))))
+        .map(|s| u64::from(u32::from(s.fully_scanned_height())))
         .unwrap_or(0);
 
     Ok(ScanResult {
-        spendable_balance: spendable,
+        spendable_balance: sapling_total + orchard_total,
+        sapling_balance: sapling_total,
+        orchard_balance: orchard_total,
         chain_height,
         scanned_height,
     })
+}
+
+#[cfg(feature = "scanner")]
+pub async fn scan_async(dfvk_bytes: &[u8], url: &str, birthday: u32) -> Result<ScanResult, lib_error> {
+    scan_full_async(Some(dfvk_bytes), None, url, birthday).await
 }
 
 #[cfg(feature = "scanner")]
@@ -152,4 +205,16 @@ pub fn scan(dfvk_bytes: &[u8], url: &str, birthday: u32) -> Result<ScanResult, l
     let rt = tokio::runtime::Runtime::new()
         .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
     rt.block_on(scan_async(dfvk_bytes, url, birthday))
+}
+
+#[cfg(feature = "scanner")]
+pub fn scan_full(
+    sapling_dfvk_bytes: Option<&[u8]>,
+    orchard_fvk_bytes: Option<&[u8]>,
+    url: &str,
+    birthday: u32,
+) -> Result<ScanResult, lib_error> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
+    rt.block_on(scan_full_async(sapling_dfvk_bytes, orchard_fvk_bytes, url, birthday))
 }

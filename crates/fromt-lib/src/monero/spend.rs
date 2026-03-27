@@ -1,5 +1,12 @@
 use std::collections::HashMap;
 
+macro_rules! debug_log {
+	($($arg:tt)*) => {
+		#[cfg(debug_assertions)]
+		eprintln!($($arg)*);
+	};
+}
+
 use zeroize::Zeroizing;
 
 use rand::rngs::OsRng;
@@ -72,17 +79,17 @@ async fn check_key_images_spent(
         .send()
         .await
         .map_err(|e| {
-            eprintln!("[fromt] is_key_image_spent request error: {:?}", e);
+            debug_log!("[fromt] is_key_image_spent request error: {:?}", e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
 
     let json: serde_json::Value = resp.json().await.map_err(|e| {
-        eprintln!("[fromt] is_key_image_spent parse error: {:?}", e);
+        debug_log!("[fromt] is_key_image_spent parse error: {:?}", e);
         lib_error::LIB_UNKNOWN_ERROR
     })?;
 
     let statuses = json["spent_status"].as_array().ok_or_else(|| {
-        eprintln!("[fromt] is_key_image_spent: no 'spent_status' in response: {}", json);
+        debug_log!("[fromt] is_key_image_spent: no 'spent_status' in response: {}", json);
         lib_error::LIB_UNKNOWN_ERROR
     })?;
 
@@ -212,12 +219,12 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         .latest_block_number()
         .await
         .map_err(|e| {
-            eprintln!("[fromt] latest_block_number error: {:?}", e);
+            debug_log!("[fromt] latest_block_number error: {:?}", e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
 
     let safe_height = if chain_height > 10 { chain_height - 10 } else { chain_height };
-    eprintln!("[fromt] Chain height: {}, scanning {} to {} (10-block safety margin)", chain_height, birthday, safe_height);
+    debug_log!("[fromt] Chain height: {}, scanning {} to {} (10-block safety margin)", chain_height, birthday, safe_height);
 
     let start = birthday as usize;
     let end = safe_height;
@@ -229,7 +236,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
             .block_by_number(height)
             .await
             .map_err(|e| {
-                eprintln!("[fromt] block_by_number({}) error: {:?}", height, e);
+                debug_log!("[fromt] block_by_number({}) error: {:?}", height, e);
                 lib_error::LIB_UNKNOWN_ERROR
             })?;
 
@@ -237,24 +244,24 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
             .expand_to_scannable_block(block)
             .await
             .map_err(|e| {
-                eprintln!("[fromt] expand_to_scannable_block({}) error: {:?}", height, e);
+                debug_log!("[fromt] expand_to_scannable_block({}) error: {:?}", height, e);
                 lib_error::LIB_UNKNOWN_ERROR
             })?;
 
         let scanned = scanner.scan(scannable).map_err(|e| {
-            eprintln!("[fromt] scan block {} error: {:?}", height, e);
+            debug_log!("[fromt] scan block {} error: {:?}", height, e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
         let unlocked = scanned.not_additionally_locked();
         if !unlocked.is_empty() {
-            eprintln!("[fromt] Found {} outputs at height {}", unlocked.len(), height);
+            debug_log!("[fromt] Found {} outputs at height {}", unlocked.len(), height);
         }
         owned_outputs.extend(unlocked);
     }
 
-    eprintln!("[fromt] Scan complete. Found {} owned outputs", owned_outputs.len());
+    debug_log!("[fromt] Scan complete. Found {} owned outputs", owned_outputs.len());
     for (i, output) in owned_outputs.iter().enumerate() {
-        eprintln!(
+        debug_log!(
             "[fromt]   Output {}: amount={} key_offset={} key={}",
             i,
             output.commitment().amount,
@@ -271,7 +278,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         });
         let excluded = before - owned_outputs.len();
         if excluded > 0 {
-            eprintln!("[fromt] Excluded {} locally-tracked spent outputs, {} remaining", excluded, owned_outputs.len());
+            debug_log!("[fromt] Excluded {} locally-tracked spent outputs, {} remaining", excluded, owned_outputs.len());
         }
     }
 
@@ -281,13 +288,13 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         let key_images: Vec<[u8; 32]> = owned_outputs.iter()
             .map(|o| compute_key_image(o, &sk))
             .collect();
-        eprintln!("[fromt] Checking {} key images against daemon...", key_images.len());
+        debug_log!("[fromt] Checking {} key images against daemon...", key_images.len());
         let spent_flags = check_key_images_spent(daemon_url, &key_images).await?;
         let before_filter = owned_outputs.len();
         let mut filtered = Vec::new();
         for (output, spent) in owned_outputs.into_iter().zip(spent_flags.iter()) {
             if *spent {
-                eprintln!("[fromt] Output at index {} is SPENT on-chain, skipping (amount={})",
+                debug_log!("[fromt] Output at index {} is SPENT on-chain, skipping (amount={})",
                     output.index_on_blockchain(), output.commitment().amount);
             } else {
                 filtered.push(output);
@@ -296,12 +303,12 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         owned_outputs = filtered;
         let removed = before_filter - owned_outputs.len();
         if removed > 0 {
-            eprintln!("[fromt] Filtered {} on-chain spent outputs, {} unspent remaining", removed, owned_outputs.len());
+            debug_log!("[fromt] Filtered {} on-chain spent outputs, {} unspent remaining", removed, owned_outputs.len());
         }
     }
 
     if owned_outputs.is_empty() {
-        eprintln!("[fromt] No owned outputs found!");
+        debug_log!("[fromt] No owned outputs found!");
         return Err(lib_error::LIB_UNKNOWN_ERROR);
     }
 
@@ -312,7 +319,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
     let mut total_selected = 0u64;
     for output in owned_outputs {
         let amt = output.commitment().amount;
-        eprintln!("[fromt]   Output amount: {} piconero", amt);
+        debug_log!("[fromt]   Output amount: {} piconero", amt);
         selected.push(output);
         total_selected += amt;
         if total_selected >= needed {
@@ -320,10 +327,10 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         }
     }
     if total_selected < needed {
-        eprintln!("[fromt] Insufficient funds: have {}, need {}", total_selected, needed);
+        debug_log!("[fromt] Insufficient funds: have {}, need {}", total_selected, needed);
         return Err(lib_error::LIB_UNKNOWN_ERROR);
     }
-    eprintln!("[fromt] Selected {} inputs totalling {} piconero", selected.len(), total_selected);
+    debug_log!("[fromt] Selected {} inputs totalling {} piconero", selected.len(), total_selected);
     let selected_offsets: Vec<[u8; 32]> = selected.iter()
         .map(|o| <[u8; 32]>::from(o.key_offset()))
         .collect();
@@ -334,16 +341,16 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         recipient_addr,
     )
     .map_err(|e| {
-        eprintln!("[fromt] parse recipient address error: {:?}", e);
+        debug_log!("[fromt] parse recipient address error: {:?}", e);
         lib_error::LIB_UNKNOWN_ERROR
     })?;
 
-    eprintln!("[fromt] Getting fee rate...");
+    debug_log!("[fromt] Getting fee rate...");
     let fee_rate = rpc
         .fee_rate(FeePriority::Unimportant, u64::MAX)
         .await
         .map_err(|e| {
-            eprintln!("[fromt] fee_rate error: {:?}", e);
+            debug_log!("[fromt] fee_rate error: {:?}", e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
 
@@ -352,10 +359,10 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
 
     let change = Change::new(view_pair, None);
 
-    eprintln!("[fromt] Selecting decoys for {} inputs...", owned_outputs.len());
+    debug_log!("[fromt] Selecting decoys for {} inputs...", owned_outputs.len());
     let mut inputs_with_decoys = Vec::new();
     for (i, output) in owned_outputs.into_iter().enumerate() {
-        eprintln!("[fromt]   Selecting decoys for input {}...", i);
+        debug_log!("[fromt]   Selecting decoys for input {}...", i);
         let owd = OutputWithDecoys::fingerprintable_deterministic_new(
             &mut OsRng,
             rpc,
@@ -365,13 +372,13 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         )
         .await
         .map_err(|e| {
-            eprintln!("[fromt] decoy selection error for input {}: {:?}", i, e);
+            debug_log!("[fromt] decoy selection error for input {}: {:?}", i, e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
         inputs_with_decoys.push(owd);
     }
 
-    eprintln!("[fromt] Building signable transaction...");
+    debug_log!("[fromt] Building signable transaction...");
     let signable = SignableTransaction::new(
         RctType::ClsagBulletproofPlus,
         outgoing_view,
@@ -382,7 +389,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         fee_rate,
     )
     .map_err(|e| {
-        eprintln!("[fromt] SignableTransaction::new error: {:?}", e);
+        debug_log!("[fromt] SignableTransaction::new error: {:?}", e);
         lib_error::LIB_UNKNOWN_ERROR
     })?;
     Ok((signable, selected_offsets))
@@ -408,11 +415,11 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
 
     let mut owned_outputs: Vec<WalletOutput> = Vec::new();
 
-    eprintln!("[fromt] Scanning {} to {} ({} blocks)", start, end, end - start + 1);
+    debug_log!("[fromt] Scanning {} to {} ({} blocks)", start, end, end - start + 1);
 
     for height in start..=end {
         if height % 100 == 0 {
-            eprintln!("[fromt] Scanning block {} / {}", height, end);
+            debug_log!("[fromt] Scanning block {} / {}", height, end);
         }
 
         let block = rpc
@@ -429,7 +436,7 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
         let unlocked = scanned.not_additionally_locked();
         for output in unlocked {
             let amount = output.commitment().amount;
-            eprintln!(
+            debug_log!(
                 "[fromt] FOUND output at height {}: {} piconero ({:.12} XMR)",
                 height,
                 amount,
@@ -440,7 +447,7 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
     }
 
     let total_received = owned_outputs.len() as u32;
-    eprintln!("[fromt] Scan complete: {} outputs found", total_received);
+    debug_log!("[fromt] Scan complete: {} outputs found", total_received);
 
     if let Some(sk_bytes) = spend_key {
         let sk = curve25519_dalek::Scalar::from_canonical_bytes(*sk_bytes)
@@ -448,18 +455,18 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
         let key_images: Vec<[u8; 32]> = owned_outputs.iter()
             .map(|o| compute_key_image(o, &sk))
             .collect();
-        eprintln!("[fromt] Checking {} key images against daemon...", key_images.len());
+        debug_log!("[fromt] Checking {} key images against daemon...", key_images.len());
         let spent_flags = check_key_images_spent(daemon_url, &key_images).await?;
         let mut unspent = Vec::new();
         for (output, spent) in owned_outputs.into_iter().zip(spent_flags.iter()) {
             if *spent {
-                eprintln!("[fromt] Output is SPENT on-chain (amount={})", output.commitment().amount);
+                debug_log!("[fromt] Output is SPENT on-chain (amount={})", output.commitment().amount);
             } else {
                 unspent.push(output);
             }
         }
         owned_outputs = unspent;
-        eprintln!("[fromt] {} unspent outputs remaining (filtered {} spent)",
+        debug_log!("[fromt] {} unspent outputs remaining (filtered {} spent)",
             owned_outputs.len(), total_received as usize - owned_outputs.len());
     }
 
@@ -469,7 +476,7 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
         total_balance += output.commitment().amount;
     }
 
-    eprintln!("[fromt] Balance: {} piconero ({:.12} XMR), {} unspent outputs",
+    debug_log!("[fromt] Balance: {} piconero ({:.12} XMR), {} unspent outputs",
         total_balance, total_balance as f64 / 1e12, num_outputs);
 
     Ok((total_balance, num_outputs))
@@ -539,7 +546,7 @@ pub fn spend_preprocess(
     let machine = signable
         .multisig(keys)
         .map_err(|e| {
-            eprintln!("[fromt][spend_preprocess] multisig failed: {:?}", e);
+            debug_log!("[fromt][spend_preprocess] multisig failed: {:?}", e);
             lib_error::LIB_SIGNING_ERROR
         })?;
 
@@ -574,7 +581,7 @@ pub fn spend_sign(
     let (sig_machine, share) = sign_machine
         .sign(parsed_preprocesses, &[])
         .map_err(|e| {
-            eprintln!(
+            debug_log!(
                 "[fromt][spend_sign] sign failed: participants={}, error={:?}",
                 preprocesses.len(),
                 e
@@ -605,7 +612,7 @@ pub fn spend_complete(
     let tx = sig_machine
         .complete(parsed_shares)
         .map_err(|e| {
-            eprintln!(
+            debug_log!(
                 "[fromt][spend_complete] complete failed: participants={}, error={:?}",
                 shares.len(),
                 e
@@ -617,28 +624,28 @@ pub fn spend_complete(
 
     let tx2 = monero_wallet::transaction::Transaction::<monero_wallet::transaction::NotPruned>::read(&mut tx_bytes.as_slice())
         .map_err(|e| {
-            eprintln!("[fromt] TX round-trip read failed: {:?}", e);
+            debug_log!("[fromt] TX round-trip read failed: {:?}", e);
             lib_error::LIB_SERIALIZATION_ERROR
         })?;
     let tx2_bytes = tx2.serialize();
 
     if tx_bytes.len() != tx2_bytes.len() {
-        eprintln!(
+        debug_log!(
             "[fromt] TX round-trip size mismatch: wrote {} bytes, re-serialized {} bytes",
             tx_bytes.len(),
             tx2_bytes.len()
         );
     }
     if tx_bytes != tx2_bytes {
-        eprintln!("[fromt] TX round-trip content mismatch!");
+        debug_log!("[fromt] TX round-trip content mismatch!");
         for i in 0..tx_bytes.len().min(tx2_bytes.len()) {
             if tx_bytes[i] != tx2_bytes[i] {
-                eprintln!("[fromt]   First diff at byte {}: 0x{:02x} vs 0x{:02x}", i, tx_bytes[i], tx2_bytes[i]);
+                debug_log!("[fromt]   First diff at byte {}: 0x{:02x} vs 0x{:02x}", i, tx_bytes[i], tx2_bytes[i]);
                 break;
             }
         }
     } else {
-        eprintln!("[fromt] TX round-trip OK ({} bytes)", tx_bytes.len());
+        debug_log!("[fromt] TX round-trip OK ({} bytes)", tx_bytes.len());
     }
 
     Ok(tx_bytes)
@@ -800,6 +807,6 @@ mod tests {
         let result = sigm.complete(other_shares);
 
         assert!(result.is_ok(), "CLSAG signing with converted keys should succeed: {:?}", result.err());
-        eprintln!("CLSAG with converted frost-ed25519 keyshares: PASSED");
+        debug_log!("CLSAG with converted frost-ed25519 keyshares: PASSED");
     }
 }

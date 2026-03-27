@@ -56,6 +56,9 @@ pub enum lib_error {
 
     #[error("Session not ready")]
     LIB_SESSION_NOT_READY,
+
+    #[error("Orchard error")]
+    LIB_ORCHARD_ERROR,
 }
 
 impl From<crate::handle::Error> for lib_error {

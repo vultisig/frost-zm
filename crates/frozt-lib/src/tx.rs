@@ -932,6 +932,8 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires Sapling output proving parameters (sapling-output.params) on disk;
+    // these ~800 MB files are not available in CI. Run manually with `cargo test -- --ignored`.
     fn test_tx_builder_add_output() {
         let keys = setup_key_material();
 

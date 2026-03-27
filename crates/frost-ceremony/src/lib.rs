@@ -1,3 +1,9 @@
+//! Generic FROST ceremony functions parameterised by `C: Ciphersuite`.
+//!
+//! Implements DKG, threshold signing, resharing, and key import as
+//! composable round functions. Used by both the Zcash (RedJubjub/RedPallas)
+//! and Monero (Ed25519) crates.
+
 pub mod dkg;
 pub mod reshare;
 pub mod sign;

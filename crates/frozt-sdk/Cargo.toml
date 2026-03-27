@@ -11,12 +11,14 @@ crate-type = ["cdylib", "rlib"]
 frozt-lib = { path = "../frozt-lib", default-features = false }
 frost-ffi = { path = "../frost-ffi" }
 
+orchard = { version = "0.12" }
 sapling-crypto = { version = "0.6", default-features = false }
 zcash_client_backend = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61", default-features = false, features = ["sync", "lightwalletd-tonic", "orchard"] }
 zcash_client_memory = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61", features = ["orchard", "transparent-inputs"] }
 zcash_keys = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61", features = ["transparent-inputs", "orchard", "sapling", "unstable", "test-dependencies"] }
 zcash_protocol = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61" }
 bip32 = { version = "=0.6.0-pre.1", default-features = false, features = ["alloc"] }
+zip32 = "0.2"
 
 tonic = { version = "0.14", features = ["channel", "tls-webpki-roots"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }

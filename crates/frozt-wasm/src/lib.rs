@@ -1,9 +1,16 @@
+//! WASM bindings for Zcash Sapling and Orchard threshold signing.
+//!
+//! Exposes DKG, signing, resharing, key import, address derivation,
+//! transaction building, and Merkle tree operations via `wasm-bindgen`.
+
 mod ceremony_metadata;
 mod codec;
 mod cross_verify;
 mod key_import;
 mod keygen;
 mod keyshare;
+mod orchard_keys;
+mod orchard_session;
 mod reshare;
 mod sapling;
 pub mod session;

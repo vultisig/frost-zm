@@ -49,3 +49,39 @@ pub extern "C" fn frozt_scan_balance(
         Ok(())
     })
 }
+
+/// Scan with both Sapling DFVK and Orchard FVK.
+/// Either `sapling_dfvk` or `orchard_fvk` may be null, but not both.
+/// Returns JSON with per-pool balances.
+#[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+pub extern "C" fn frozt_scan_full(
+    sapling_dfvk: Option<&go_slice>,
+    orchard_fvk: Option<&go_slice>,
+    url: Option<&go_slice>,
+    birthday: u64,
+    out_result: Option<&mut tss_buffer>,
+) -> lib_error {
+    with_error_handler(|| {
+        let url_data = url.ok_or(lib_error::LIB_NULL_PTR)?;
+        let out = out_result.ok_or(lib_error::LIB_NULL_PTR)?;
+
+        let url_str = std::str::from_utf8(url_data.as_slice())
+            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+
+        let sapling_bytes = sapling_dfvk.map(|s| s.as_slice());
+        let orchard_bytes = orchard_fvk.map(|s| s.as_slice());
+
+        let result = scanner::scan_full(
+            sapling_bytes,
+            orchard_bytes,
+            url_str,
+            birthday as u32,
+        )?;
+
+        let json = serde_json::to_vec(&result)
+            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+
+        *out = tss_buffer::from_vec(json);
+        Ok(())
+    })
+}

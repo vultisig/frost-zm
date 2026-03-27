@@ -11,7 +11,7 @@ crates/
   frost-ffi/           Shared FFI infrastructure (handle table, buffers, codec, errors)
   frost-ceremony/      Generic FROST ceremonies over any Ciphersuite (DKG, sign, reshare, key import)
   frost-session/       Session-based ceremony driver (setup, message routing, state machine)
-  frozt-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
+  frozt-lib/           Zcash Sapling + Orchard — signing, z-addresses, tx building, ceremony metadata
   frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
   fromt-lib/           Monero — Ed25519 signing, view keys, CKD, key image ceremony, subaddresses
   fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
@@ -53,9 +53,9 @@ client/
 
 ---
 
-## frozt — Zcash Sapling
+## frozt — Zcash (Sapling + Orchard)
 
-Threshold signing on the RedJubjub curve (`JubjubBlake2b512`) with rerandomization for Zcash Sapling's unlinkability guarantees.
+Threshold signing for both Zcash shielded pools: **Sapling** (RedJubjub / `JubjubBlake2b512`) and **Orchard** (RedPallas / `PallasBlake2b512`), with rerandomization for unlinkability.
 
 ### Curve & Ciphersuite
 
@@ -70,6 +70,38 @@ RedJubjub with Blake2b-512 — the curve used by Zcash Sapling for spend authori
 - **Sapling** — Z-address generation, note decryption, nullifier computation, Merkle tree witness management, and Sapling transaction building.
 - **Ceremony Metadata** — Coordinator bundles birthday + sapling extras into a versioned metadata blob, broadcast to all parties during DKG/import. Hash-verified for consistency.
 - **Scanner** (SDK) — Full wallet sync via `zcash_client_backend` + `zcash_client_memory` against lightwalletd. Native build in `frozt-sdk` (gRPC via tonic), TypeScript SDK in `packages/frozt-sdk-ts` (gRPC-web via Connect).
+
+### Orchard Support
+
+Orchard uses the **RedPallas** curve (`PallasBlake2b512`) — the Pallas-curve analogue of RedJubjub, used by Zcash's Orchard shielded pool (NU5+). The same FROST ceremony infrastructure (`frost-ceremony`) is used, but parameterised over a different ciphersuite.
+
+**Protocols:**
+
+- **Orchard DKG** — 3-round FROST key generation over `PallasBlake2b512`. Produces per-party `KeyPackage` and shared `PublicKeyPackage`. Uses session-based driver (`frost-session`).
+- **Orchard Signing** — 2-round commit/sign threshold signing with rerandomization via `frost-rerandomized`. Produces valid RedPallas spend-authorization signatures for Orchard actions.
+- **Orchard Resharing** — Threshold rotation (e.g., 2-of-2 → 2-of-3) preserving the group public key. Session-based API.
+- **Orchard Key Import** — Import existing Orchard spending keys (ZIP 32 path `m/32'/133'/account'`) into the threshold scheme.
+- **Orchard Key Derivation** — Full viewing key, incoming viewing key, and diversified Orchard address derivation from the group public key.
+- **Orchard WASM** — `frozt-wasm` exports all Orchard operations: `orchardDkgPart*`, `orchardSignCommit`/`orchardSign`/`orchardAggregate`, `orchardReshare*`, `orchardKeyImport*`, `orchardDeriveAddress`.
+
+**Modules in `frozt-lib`:**
+
+| Module | Purpose |
+|--------|---------|
+| `orchard_keygen` | DKG round functions over `PallasBlake2b512` |
+| `orchard_sign` | Commit/sign/aggregate with rerandomization |
+| `orchard_reshare` | Threshold rotation |
+| `orchard_keys` | FVK/IVK/address derivation from group public key |
+| `orchard_keyshare` | KeyShareBundle packing/unpacking for Orchard shares |
+| `orchard_tx` | Orchard action sighash computation, action parsing |
+
+**Upstream:**
+
+| Component | Source | Version |
+|-----------|--------|---------|
+| RedPallas ciphersuite | [`reddsa`](https://github.com/ZcashFoundation/reddsa) | git (475a552) |
+| Orchard key derivation | [`orchard`](https://crates.io/crates/orchard) | 0.11 |
+| Pallas curve | [`pasta_curves`](https://crates.io/crates/pasta_curves) | 0.5 |
 
 ### KeyShareBundle
 
@@ -389,4 +421,4 @@ Runtime env vars set per container by docker-compose:
 
 ## License
 
-See individual crate licenses.
+MIT — see [LICENSE](LICENSE).

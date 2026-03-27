@@ -28,6 +28,8 @@ byteorder = "1"
 hex = "0.4"
 zeroize = "1"
 frozt-lib = { path = "../frozt-lib", default-features = false }
+orchard = { version = "0.11" }
+pasta_curves = "0.5"
 frost-session = { path = "../frost-session" }
 frost-ceremony = { path = "../frost-ceremony" }
 blake2b_simd = "1"

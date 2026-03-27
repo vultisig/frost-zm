@@ -1,3 +1,10 @@
+//! Zcash threshold signing for Sapling (RedJubjub) and Orchard (RedPallas).
+//!
+//! Provides distributed key generation, threshold signing with rerandomisation,
+//! key import, resharing, transaction building, and z-address derivation.
+//! Sapling and Orchard operations share the generic `frost-ceremony` infrastructure
+//! but are parameterised over different FROST ciphersuites.
+
 pub use frost_ffi::bytes;
 pub use frost_ffi::codec;
 pub use frost_ffi::errors;
@@ -15,6 +22,13 @@ pub mod tree;
 pub mod tx;
 pub mod shielding_tx;
 mod zeroize_util;
+
+pub mod orchard_keygen;
+pub mod orchard_keys;
+pub mod orchard_keyshare;
+pub mod orchard_reshare;
+pub mod orchard_sign;
+pub mod orchard_tx;
 
 pub use zeroize_util::{zeroize_scalar, zeroize_scalar_vec};
 
