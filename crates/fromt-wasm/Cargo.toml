@@ -7,7 +7,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-fromt-lib = { path = "../fromt-lib", default-features = false }
+fromtlib = { path = "../fromt", default-features = false, package = "fromt" }
+frosty = { path = "../frosty" }
 frost-session = { path = "../frost-session" }
 frost-ceremony = { path = "../frost-ceremony" }
 wasm-bindgen = "0.2"

@@ -1,33 +1,57 @@
-# frost-zm
+# frosty
 
-Threshold signing for Zcash Sapling and Monero in a single workspace. Two FROST-based libraries — **frozt** (Zcash) and **fromt** (Monero) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
+Multi-chain FROST threshold signing library. A generic **frosty** base provides DKG, signing, resharing, key import, and CKD ceremonies parameterized over any FROST ciphersuite. Thin chain wrappers add only chain-specific logic (address derivation, transaction building, etc.).
 
 No single party ever holds a full private key. T-of-N parties run distributed key generation, threshold signing, resharing, and key import ceremonies.
+
+## Supported Chains
+
+| Chain | Crate | Ciphersuite | Curve |
+|-------|-------|-------------|-------|
+| Bitcoin | `frobt` | Secp256K1Sha256 | secp256k1 |
+| Ethereum/EVM | `froeth` | Secp256K1Sha256 | secp256k1 |
+| Solana | `frosst` | Ed25519Sha512 | ed25519 |
+| Monero | `fromt` | Ed25519Sha512 | ed25519 |
+| Zcash Sapling | `frozt` | JubjubBlake2b512 | jubjub |
 
 ## Architecture
 
 ```
 crates/
+  frosty/              Generic base — KeyShareBundle<C,M>, ceremonies, FFI macros
   frost-ffi/           Shared FFI infrastructure (handle table, buffers, codec, errors)
   frost-ceremony/      Generic FROST ceremonies over any Ciphersuite (DKG, sign, reshare, key import)
   frost-session/       Session-based ceremony driver (setup, message routing, state machine)
-  frozt-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
-  frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
-  fromt-lib/           Monero — Ed25519 signing, view keys, CKD, key image ceremony, subaddresses
-  fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
-  frozt-wasm/          Zcash WASM bindings (wasm-bindgen)
+
+  frobt/               Bitcoin — Taproot signing, P2TR addresses, sighash, witness
+  froeth/              Ethereum — Keccak+EIP-55 addresses, BIP32 CKD
+  frosst/              Solana — Ed25519 signing, base58 addresses
+  fromt/               Monero — view keys, CLSAG, key images, Keccak CKD, subaddresses
+  frozt/           Zcash Sapling — rerandomized signing, z-addresses, tx building
+
+  frobt-wasm/          Bitcoin WASM bindings (wasm-bindgen)
+  froeth-wasm/         Ethereum WASM bindings (wasm-bindgen)
+  frosst-wasm/         Solana WASM bindings (wasm-bindgen)
   fromt-wasm/          Monero WASM bindings (wasm-bindgen)
+  fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
+  frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
+  frozt-wasm/          Zcash WASM bindings (wasm-bindgen)
 
 go/
   frostgo/             Shared Go codec and error handling
-  frozt/               Zcash Go bindings (CGo) — core crypto
-  frozt-sdk/           Zcash Go SDK bindings (CGo) — scanner
+  frobt/               Bitcoin Go bindings (CGo)
+  froeth/              Ethereum Go bindings (CGo)
+  frosst/              Solana Go bindings (CGo)
   fromt/               Monero Go bindings (CGo)
   fromt-sdk/           Monero Go SDK bindings (CGo) — spend FFI
+  frozt/               Zcash Go bindings (CGo) — core crypto
+  frozt-sdk/           Zcash Go SDK bindings (CGo) — scanner
 
 packages/
-  frozt-sdk-ts/        Zcash TypeScript SDK — wallet, ceremony, scanner, lightwalletd client
+  frobt-sdk-ts/        Bitcoin TypeScript SDK
+  froeth-sdk-ts/       Ethereum TypeScript SDK
   fromt-sdk-ts/        Monero TypeScript SDK
+  frozt-sdk-ts/        Zcash TypeScript SDK
 
 client/
   shared/              Shared relay, session runner, vault format, config, keystore base
@@ -35,6 +59,16 @@ client/
   fromt/               Monero client — daemon RPC, address derivation, Docker orchestration
   vult/                Combined vault tests — multi-chain key import, vault round-trip
 ```
+
+### Adding a New Chain
+
+With the `frosty` base, adding a new chain requires ~100 lines:
+
+1. Define a metadata type (or reuse `ChainCodeMeta`)
+2. Invoke FFI macros: `define_frosty_ffi_dkg!`, `_sign!`, `_reshare!`, `_key_import!`, `_keyshare!`
+3. Implement chain-specific address derivation
+
+See `crates/frosst/` (Solana) for a minimal example.
 
 ### Shared Crates
 
@@ -50,6 +84,54 @@ client/
 - `reshare_part1/3<C>` — threshold parameter rotation preserving the public key
 - `key_import_part1/3<C>` — import existing keys into threshold shares
 - `lagrange_coeff<C>` — Lagrange interpolation over the scalar field
+
+---
+
+## frosty — Generic Base
+
+The `frosty` crate provides all shared ceremony logic parameterized over `C: Ciphersuite` and `M: BundleMetadata`:
+
+- **`KeyShareBundle<C, M>`** — Generic serializable bundle containing FROST key/public-key packages + chain metadata
+- **`BundleMetadata` trait** — Chain-specific metadata (chain code, view key, etc.) with serialize/deserialize
+- **`ChainCodeMeta`** — Built-in metadata for BIP32-compatible chains (Bitcoin, Ethereum, Solana)
+- **Generic ceremonies** — `dkg_part1/2/3`, `sign_commit/sign/aggregate`, `reshare_part1/3`, `key_import_part1/3`, `ckd_derive/derive_child_pubkey`
+- **FFI macros** — `define_frosty_ffi_dkg!`, `_sign!`, `_reshare!`, `_key_import!`, `_ckd!`, `_keyshare!`, `_handle_free!` stamp out `extern "C"` functions with chain-prefixed names
+
+---
+
+## frobt — Bitcoin
+
+Threshold Schnorr signing on secp256k1 for Bitcoin Taproot (P2TR).
+
+- **Ciphersuite**: `Secp256K1Sha256`
+- **Address**: P2TR (bech32m, `bc1p...`) with BIP341 TapTweak
+- **CKD**: BIP32 non-hardened child key derivation (HMAC-SHA512)
+- **Key Import**: BIP32 path `m/86'/0'/account'`
+- **Taproot signing**: Threshold BIP340 Schnorr with optional merkle root tweak
+- **Transaction**: Taproot sighash computation (BIP341) and witness attachment
+
+---
+
+## froeth — Ethereum / EVM
+
+Threshold Schnorr signing on secp256k1 for Ethereum and EVM chains.
+
+- **Ciphersuite**: `Secp256K1Sha256` (same as Bitcoin)
+- **Address**: Keccak-256 hash of uncompressed public key, EIP-55 checksummed hex
+- **CKD**: BIP32 non-hardened child key derivation (HMAC-SHA512)
+- **Key Import**: BIP32 path `m/44'/60'/account'`
+
+---
+
+## frosst — Solana
+
+Threshold Ed25519 signing for Solana.
+
+- **Ciphersuite**: `Ed25519Sha512` (same curve as Monero)
+- **Address**: Base58 encoding of the 32-byte Ed25519 group public key
+- **Key Import**: BIP32 path `m/44'/501'/account'`
+- No CKD (Solana uses single keypair per account)
+- No transaction building (caller handles Solana tx serialization; signing produces a standard Ed25519 signature)
 
 ---
 
@@ -109,17 +191,17 @@ DKG delegates to `frost_core::keys::dkg::part1/2/3`. Signing delegates to `frost
 
 ### What we implement ourselves
 
-Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozt-lib/` (Zcash-specific):
+Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozt/` (Zcash-specific):
 
 **Resharing** (`frost-ceremony/src/reshare.rs`) — Changes the threshold scheme (e.g., 2-of-2 to 2-of-3) while preserving the group public key. The only custom math is Lagrange interpolation coefficients over the scalar field — textbook polynomial evaluation using upstream field arithmetic. The result feeds into standard `frost-core` DKG rounds 2 and 3 and is verified against the expected verifying key.
 
-**Key Import** (`frost-ceremony/src/key_import.rs`, `frozt-lib/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
+**Key Import** (`frost-ceremony/src/key_import.rs`, `frozt/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
 
-**Sapling extras & z-address composition** (`frozt-lib/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
+**Sapling extras & z-address composition** (`frozt/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
 
-**Transaction building** (`frozt-lib/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
+**Transaction building** (`frozt/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
 
-**Ceremony metadata** (`frozt-lib/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
+**Ceremony metadata** (`frozt/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
 
 Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay client) is non-cryptographic plumbing.
 
@@ -288,22 +370,31 @@ Protobuf vault format helpers — `FroztChainKeyEntry`, `FromtChainKeyEntry`, `F
 ## Build
 
 ```bash
-make build-rust          # Both Rust libraries (release)
-make build-frozt         # Zcash only
+make build-rust          # All Rust libraries (release)
+make build-frobt         # Bitcoin only
+make build-froeth        # Ethereum only
+make build-frosst        # Solana only
 make build-fromt         # Monero only
+make build-frozt         # Zcash only
 
-make build-go            # Both Go bindings (builds Rust, copies libs)
-make build-go-frozt      # Zcash Go only
+make build-go            # All Go bindings (builds Rust, copies libs)
+make build-go-frobt      # Bitcoin Go only
+make build-go-froeth     # Ethereum Go only
+make build-go-frosst     # Solana Go only
 make build-go-fromt      # Monero Go only
+make build-go-frozt      # Zcash Go only
 ```
 
 ### WASM
 
-Both WASM crates are pure crypto (no network deps) and build with standard wasm-pack:
+All WASM crates are pure crypto (no network deps) and build with standard wasm-pack:
 
 ```bash
-wasm-pack build crates/frozt-wasm --target web --out-dir ../../pkg/frozt
+wasm-pack build crates/frobt-wasm --target web --out-dir ../../pkg/frobt
+wasm-pack build crates/froeth-wasm --target web --out-dir ../../pkg/froeth
+wasm-pack build crates/frosst-wasm --target web --out-dir ../../pkg/frosst
 wasm-pack build crates/fromt-wasm --target web --out-dir ../../pkg/fromt
+wasm-pack build crates/frozt-wasm --target web --out-dir ../../pkg/frozt
 ```
 
 ### TypeScript SDK
@@ -326,7 +417,7 @@ make build-fromt-linux-arm64
 ## Test
 
 ```bash
-make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, fromt-lib, wasm)
+make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, all chains, wasm)
 make test-go             # All Go tests
 make test                # Both
 

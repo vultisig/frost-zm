@@ -7,7 +7,7 @@ use crate::to_js_err;
 #[wasm_bindgen]
 pub fn fromt_derive_view_key(key_share: &[u8]) -> Result<Vec<u8>, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
-    Ok(bundle.view_key.to_vec())
+    Ok(bundle.metadata.view_key.to_vec())
 }
 
 #[wasm_bindgen]
@@ -22,7 +22,7 @@ pub fn fromt_derive_address(key_share: &[u8]) -> Result<String, JsValue> {
     let spend_pub = bundle.verifying_key_bytes().map_err(to_js_err)?;
     let mut sp = [0u8; 32];
     sp.copy_from_slice(&spend_pub);
-    fromtlib::monero::address::derive_address(&sp, &bundle.view_key, bundle.network)
+    fromtlib::monero::address::derive_address(&sp, &bundle.metadata.view_key, bundle.metadata.network)
         .map_err(to_js_err)
 }
 
@@ -36,7 +36,7 @@ pub fn fromt_derive_subaddress(
     let spend_pub = bundle.verifying_key_bytes().map_err(to_js_err)?;
     let mut sp = [0u8; 32];
     sp.copy_from_slice(&spend_pub);
-    fromtlib::monero::subaddress::derive_subaddress(&sp, &bundle.view_key, account, index, bundle.network)
+    fromtlib::monero::subaddress::derive_subaddress(&sp, &bundle.metadata.view_key, account, index, bundle.metadata.network)
         .map_err(to_js_err)
 }
 
@@ -305,11 +305,11 @@ pub fn fromt_derive_commitment_mask(
 #[wasm_bindgen]
 pub fn fromt_keyshare_birthday(key_share: &[u8]) -> Result<u64, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
-    Ok(bundle.birthday)
+    Ok(bundle.metadata.birthday)
 }
 
 #[wasm_bindgen]
 pub fn fromt_keyshare_network(key_share: &[u8]) -> Result<u8, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
-    Ok(bundle.network)
+    Ok(bundle.metadata.network)
 }

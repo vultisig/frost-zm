@@ -8,7 +8,7 @@ name = "froztsdk"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-frozt-lib = { path = "../frozt-lib", default-features = false }
+froztlib = { path = "../frozt", default-features = false, package = "frozt" }
 frost-ffi = { path = "../frost-ffi" }
 
 sapling-crypto = { version = "0.6", default-features = false }

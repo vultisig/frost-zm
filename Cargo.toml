@@ -3,13 +3,21 @@ resolver = "2"
 members = [
     "crates/frost-ffi",
     "crates/frost-ceremony",
-    "crates/frozt-lib",
-    "crates/frozt-sdk",
-    "crates/frozt-wasm",
-    "crates/fromt-lib",
+    "crates/frost-session",
+    "crates/frosty",
+    "crates/frobt",
+    "crates/froeth",
+    "crates/fromt",
+    "crates/frosst",
+    "crates/frosst-wasm",
+    "crates/frobt-wasm",
+    "crates/froeth-wasm",
     "crates/fromt-sdk",
     "crates/fromt-wasm",
-    "crates/frost-session",
+    "crates/frozt",
+    "crates/frozt-sdk",
+    "crates/frozt-wasm",
+    "crates/test-vectors",
 ]
 
 [patch.crates-io]

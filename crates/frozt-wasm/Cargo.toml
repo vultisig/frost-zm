@@ -27,7 +27,7 @@ incrementalmerkletree = { version = "0.8", features = ["legacy-api"] }
 byteorder = "1"
 hex = "0.4"
 zeroize = "1"
-frozt-lib = { path = "../frozt-lib", default-features = false }
+froztlib = { path = "../frozt", default-features = false, package = "frozt" }
 frost-session = { path = "../frost-session" }
 frost-ceremony = { path = "../frost-ceremony" }
 blake2b_simd = "1"

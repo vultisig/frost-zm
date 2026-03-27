@@ -1,0 +1,54 @@
+{
+  "chainHeight": 3629402,
+  "outputs": [
+    {
+      "outputKey": "5061fd0b3c018bb47da73ab35aa0c07e895a84fe8415ba4d1e6d82a0f1d5c541",
+      "keyOffset": "8635f331c1a3af032d38068fa8876cdf47783dbec71c60df695cf6176860e009",
+      "amount": 553019290000,
+      "txHash": "1a08783b2e112f1b1d190e0ba6e4179abffcd0c5dc737abd08dcf757b2c22181",
+      "outputIndex": 0
+    },
+    {
+      "outputKey": "2e5d2b745a749e192c514198bff35bed2988be0be0947db3de9562aa9b553c1c",
+      "keyOffset": "916539e99a640562355043113a7ad210da317dd9ec9eba32f47809c1900bd30c",
+      "amount": 452988550000,
+      "txHash": "2489d78f3f877a5409ce62301f183db2e1632f9896b672a1bbbab0342188839d",
+      "outputIndex": 0
+    },
+    {
+      "outputKey": "12f1ab074b6ad8897e98a088e77c6a775f5a5717e542f1125b9037bebaf855c4",
+      "keyOffset": "9faca88b6ac942dcf41edf8df2253cb324ea9c326811762323553deef9dbb10a",
+      "amount": 100000000000,
+      "txHash": "2489d78f3f877a5409ce62301f183db2e1632f9896b672a1bbbab0342188839d",
+      "outputIndex": 1
+    },
+    {
+      "outputKey": "770b3cab8bd8cd95fe0045292291994fbe4a2e6b54d8864aa7fd14a37733cdb9",
+      "keyOffset": "707030317e613cf9c3591a1352772e0f5ba760693dccba6493dee844b27a770e",
+      "amount": 402957790000,
+      "txHash": "811a1fd091f215ecdf13ce1a40d284d5074c1bf0d055ebbddca0034923820e18",
+      "outputIndex": 0
+    },
+    {
+      "outputKey": "e2d1b9c1c62a4a79b813520a7c255fac53f9904dfbabf08e023568d845041681",
+      "keyOffset": "2dd9a2691484ba112d4e87f952f8f363719168eae3cbe3fbc88c3c390282af07",
+      "amount": 50000000000,
+      "txHash": "811a1fd091f215ecdf13ce1a40d284d5074c1bf0d055ebbddca0034923820e18",
+      "outputIndex": 1
+    },
+    {
+      "outputKey": "018151d124a77404dc40c1054431f4613274f1ecdaf15a2b3cdf30c8f0e591be",
+      "keyOffset": "9f5035ec744d18176458bfd7f47873384182fe8a12ff3ab86abc467391d17e0c",
+      "amount": 100000000000,
+      "txHash": "28802af6465eb13b87bbdb78552b6c762806726b034161232394c59b06557412",
+      "outputIndex": 0
+    },
+    {
+      "outputKey": "ed3eeb68bf59950fa1be026d1feb5c3ec3d24324d7f6fb23ed851244b99da84b",
+      "keyOffset": "efbd4766b838e5bc4cac18a297ec05e1116e438a42312342bbddede0d141c20c",
+      "amount": 302927130000,
+      "txHash": "28802af6465eb13b87bbdb78552b6c762806726b034161232394c59b06557412",
+      "outputIndex": 1
+    }
+  ]
+}

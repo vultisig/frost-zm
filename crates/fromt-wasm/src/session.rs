@@ -59,8 +59,8 @@ async fn fromt_dkg_run(
         let mut bytes = package.serialize().map_err(dkg_ser_err)?;
 
         let vk_share: Scalar = F::random(&mut rng);
-        let vk_bytes: [u8; VK_SHARE_LEN] = F::serialize(&vk_share)
-            .as_ref()
+        let serialized = F::serialize(&vk_share);
+        let vk_bytes: [u8; VK_SHARE_LEN] = AsRef::<[u8]>::as_ref(&serialized)
             .try_into()
             .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
 
@@ -116,10 +116,10 @@ async fn fromt_dkg_run(
             .map_err(|_| lib_error::LIB_DKG_ERROR)?;
 
     let mut vk_share_local = vk_share_bytes;
-    let mut vk_sum = fromtlib::ceremony::dkg::aggregate_view_key_shares(&vk_share_local, &vk_shares_map)?;
+    let mut vk_sum = frosty::ceremony::dkg::aggregate_extra_shares::<E>(&vk_share_local, &vk_shares_map)?;
     vk_share_local.iter_mut().for_each(|b| *b = 0);
 
-    let bundle = fromtlib::keyshare::bundle::KeyShareBundle::new(
+    let bundle = fromtlib::keyshare::bundle::new_bundle(
         key_package,
         pub_key_package,
         vk_sum,
@@ -233,10 +233,10 @@ async fn fromt_key_import_run(
     }
 
     let mut vk_share_local = vk_share_bytes;
-    let mut vk_sum = fromtlib::ceremony::dkg::aggregate_view_key_shares(&vk_share_local, &vk_shares_map)?;
+    let mut vk_sum = frosty::ceremony::dkg::aggregate_extra_shares::<E>(&vk_share_local, &vk_shares_map)?;
     vk_share_local.iter_mut().for_each(|b| *b = 0);
 
-    let bundle = fromtlib::keyshare::bundle::KeyShareBundle::new(
+    let bundle = fromtlib::keyshare::bundle::new_bundle(
         key_package,
         pub_key_package,
         vk_sum,

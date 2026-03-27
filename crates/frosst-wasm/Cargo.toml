@@ -1,0 +1,17 @@
+[package]
+name = "frosst-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frosstlib = { path = "../frosst", default-features = false, package = "frosst" }
+frosty = { path = "../frosty" }
+frost-core = { version = "2", features = ["internals"] }
+frost-ed25519 = "2"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
