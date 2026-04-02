@@ -1,7 +1,7 @@
 .PHONY: build-frozt build-fromt build-rust build-go-frozt build-go-fromt build-go \
        build-frozt-linux-amd64 build-frozt-linux-arm64 build-fromt-linux-amd64 build-fromt-linux-arm64 \
        build-wasm-frozt build-wasm-fromt \
-       test-rust test-go-frozt test-go-fromt test-go test test-all test-wasm \
+       test-rust test-go-frozt test-go-fromt test-go test test-all \
        docker-keygen docker-sign clean
 
 # --- Rust builds ---

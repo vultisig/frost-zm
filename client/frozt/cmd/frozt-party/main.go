@@ -84,7 +84,10 @@ func main() {
 		cancel()
 	}()
 
-	node := party.NewNode(cfg)
+	node, err := party.NewNode(cfg)
+	if err != nil {
+		log.Fatalf("Create node: %v", err)
+	}
 	err = node.Run(ctx)
 	if err != nil {
 		log.Fatalf("Operation failed: %v", err)

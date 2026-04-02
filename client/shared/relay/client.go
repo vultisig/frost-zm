@@ -63,7 +63,11 @@ func NewRelayClient(baseURL string) *RelayClient {
 	}
 }
 
-func NewRelayClientWithEncryption(baseURL, encryptionKeyHex string) *RelayClient {
+func NewRelayClientWithEncryption(baseURL, encryptionKeyHex string) (*RelayClient, error) {
+	_, err := hex.DecodeString(encryptionKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid encryption key hex: %w", err)
+	}
 	return &RelayClient{
 		BaseURL: baseURL,
 		HTTPClient: &http.Client{
@@ -73,7 +77,7 @@ func NewRelayClientWithEncryption(baseURL, encryptionKeyHex string) *RelayClient
 		MessagePollInterval: 50 * time.Millisecond,
 		BarrierPollInterval: 100 * time.Millisecond,
 		BarrierRepostCount:  10,
-	}
+	}, nil
 }
 
 func (c *RelayClient) JoinSession(ctx context.Context, sessionID string, parties []string) error {
@@ -134,7 +138,10 @@ func (c *RelayClient) SendMessage(ctx context.Context, sessionID, messageID stri
 
 	hashInput := msg.From + ":" + msg.Body
 	if c.EncryptionKeyHex != "" {
-		keyBytes, _ := hex.DecodeString(c.EncryptionKeyHex)
+		keyBytes, err := c.encryptionKey()
+		if err != nil {
+			return fmt.Errorf("decode encryption key: %w", err)
+		}
 		mac := hmac.New(sha256.New, keyBytes)
 		mac.Write([]byte(hashInput))
 		msg.Hash = hex.EncodeToString(mac.Sum(nil))
@@ -165,7 +172,10 @@ func (c *RelayClient) SendMessage(ctx context.Context, sessionID, messageID stri
 	if messageID != "" {
 		req.Header.Set("message_id", messageID)
 	}
-	c.setAuthHeader(req, sessionID, c.PartyID)
+	err = c.setAuthHeader(req, sessionID, c.PartyID)
+	if err != nil {
+		return err
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -189,7 +199,10 @@ func (c *RelayClient) GetMessages(ctx context.Context, sessionID, participantID,
 	if messageID != "" {
 		req.Header.Set("message_id", messageID)
 	}
-	c.setAuthHeader(req, sessionID, c.PartyID)
+	err = c.setAuthHeader(req, sessionID, c.PartyID)
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -241,31 +254,6 @@ func (c *RelayClient) PostBarrier(ctx context.Context, sessionID string, req Bar
 	return &result, nil
 }
 
-func (c *RelayClient) StartTSS(ctx context.Context, sessionID string, parties []string) error {
-	body, err := json.Marshal(parties)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/start/%s", c.BaseURL, url.PathEscape(sessionID)), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("start tss: status %d", resp.StatusCode)
-	}
-	return nil
-}
-
 func (c *RelayClient) CompleteTSS(ctx context.Context, sessionID string, parties []string) error {
 	body, err := json.Marshal(parties)
 	if err != nil {
@@ -291,19 +279,24 @@ func (c *RelayClient) CompleteTSS(ctx context.Context, sessionID string, parties
 	return nil
 }
 
-func (c *RelayClient) setAuthHeader(req *http.Request, sessionID, partyID string) {
+func (c *RelayClient) encryptionKey() ([]byte, error) {
+	return hex.DecodeString(c.EncryptionKeyHex)
+}
+
+func (c *RelayClient) setAuthHeader(req *http.Request, sessionID, partyID string) error {
 	if c.EncryptionKeyHex == "" {
-		return
+		return nil
 	}
-	keyBytes, err := hex.DecodeString(c.EncryptionKeyHex)
+	keyBytes, err := c.encryptionKey()
 	if err != nil {
-		return
+		return fmt.Errorf("decode encryption key: %w", err)
 	}
 	mac := hmac.New(sha256.New, keyBytes)
 	mac.Write([]byte(sessionID + ":" + partyID))
 	token := hex.EncodeToString(mac.Sum(nil))
 	req.Header.Set("X-Session-Token", token)
 	req.Header.Set("X-Party-ID", partyID)
+	return nil
 }
 
 func (c *RelayClient) DecryptBody(body string) (string, error) {
@@ -323,7 +316,10 @@ func (c *RelayClient) DecryptAndVerify(msg Message) (string, error) {
 		hashInput := msg.From + ":" + plaintext
 		var expected string
 		if c.EncryptionKeyHex != "" {
-			keyBytes, _ := hex.DecodeString(c.EncryptionKeyHex)
+			keyBytes, keyErr := c.encryptionKey()
+			if keyErr != nil {
+				return "", fmt.Errorf("decode encryption key: %w", keyErr)
+			}
 			mac := hmac.New(sha256.New, keyBytes)
 			mac.Write([]byte(hashInput))
 			expected = hex.EncodeToString(mac.Sum(nil))

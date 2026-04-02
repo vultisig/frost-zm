@@ -43,7 +43,7 @@ func RunReshare(
 		MsgReceiver: func(msg []byte, i int) ([]byte, error) { return frozt.ReshareSessionMsgReceiver(sess, msg, i) },
 	})
 	if err != nil {
-		blame := handleBlame(ctx, client, sessionID, partyID, allParties, err)
+		blame := handleBlame(client, sessionID, partyID, allParties, err)
 		return nil, blame, fmt.Errorf("reshare session run: %w", err)
 	}
 

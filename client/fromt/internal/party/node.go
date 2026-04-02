@@ -41,10 +41,14 @@ type Node struct {
 	spentOffsets []byte
 }
 
-func NewNode(cfg Config) *Node {
+func NewNode(cfg Config) (*Node, error) {
 	var client *relay.RelayClient
 	if cfg.EncryptionKeyHex != "" {
-		client = relay.NewRelayClientWithEncryption(cfg.RelayURL, cfg.EncryptionKeyHex)
+		var err error
+		client, err = relay.NewRelayClientWithEncryption(cfg.RelayURL, cfg.EncryptionKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("create relay client: %w", err)
+		}
 	} else {
 		client = relay.NewRelayClient(cfg.RelayURL)
 	}
@@ -61,7 +65,7 @@ func NewNode(cfg Config) *Node {
 		Config:   cfg,
 		Client:   client,
 		Keystore: ks,
-	}
+	}, nil
 }
 
 func (n *Node) Run(ctx context.Context) error {

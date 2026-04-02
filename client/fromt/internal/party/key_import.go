@@ -79,7 +79,7 @@ func (n *Node) runKeyImport(ctx context.Context) error {
 		return fmt.Errorf("barrier import-vk-exchanged: %w", err)
 	}
 
-	result, err := orchestration.RunKeyImport(
+	result, ceremony, err := orchestration.RunKeyImport(
 		ctx,
 		n.Client,
 		n.Config.SessionID,
@@ -93,6 +93,10 @@ func (n *Node) runKeyImport(ctx context.Context) error {
 		n.Config.Birthday,
 	)
 	if err != nil {
+		if ceremony != nil && ceremony.Blame != nil {
+			log.Printf("[%s] Blame result: agreed=%v blamed=%s type=%s",
+				n.Config.PartyID, ceremony.Blame.Agreed, ceremony.Blame.BlamedParty, ceremony.Blame.BlameType)
+		}
 		return fmt.Errorf("key import failed: %w", err)
 	}
 

@@ -28,6 +28,8 @@ go/
 packages/
   frozt-sdk-ts/        Zcash TypeScript SDK — wallet, ceremony, scanner, lightwalletd client
   fromt-sdk-ts/        Monero TypeScript SDK
+  frozt-wasm/          Zcash WASM build output (wasm-pack pkg)
+  fromt-wasm/          Monero WASM build output (wasm-pack pkg)
 
 client/
   shared/              Shared relay, session runner, blame protocol, vault format, config, keystore base
@@ -94,7 +96,7 @@ Birthday records the block height at wallet creation — user-provided for seed 
 | Rerandomized signing | [`frost-rerandomized`](https://crates.io/crates/frost-rerandomized) v2.2 | Rerandomization layer for Zcash Sapling unlinkability |
 | RedJubjub ciphersuite | [`reddsa`](https://github.com/ZcashFoundation/reddsa) (ZcashFoundation) | `JubjubBlake2b512` curve definition + FROST ciphersuite |
 | Sapling key derivation | [`sapling-crypto`](https://crates.io/crates/sapling-crypto) v0.6 | ZIP 32 extended spending keys, note encryption, Groth16 spend/output provers |
-| Address encoding | [`zcash_address`](https://crates.io/crates/zcash_address) v0.6 | Bech32 Sapling z-address encoding |
+| Address encoding | [`zcash_address`](https://github.com/ChainSafe/librustzcash-nu61) | Bech32 Sapling z-address encoding |
 | JubJub field ops | [`jubjub`](https://crates.io/crates/jubjub) v0.10 | Scalar field and group operations |
 | ZIP 32 paths | [`zip32`](https://crates.io/crates/zip32) v0.2 | Hardened path derivation (`m/32'/133'/account'`) |
 | Note encryption | [`zcash_note_encryption`](https://crates.io/crates/zcash_note_encryption) v0.4 | Sapling note plaintext encryption/decryption |

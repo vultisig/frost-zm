@@ -12,16 +12,6 @@ pub(crate) fn ser_err<E: std::fmt::Debug>(e: E) -> lib_error {
     lib_error::LIB_SERIALIZATION_ERROR
 }
 
-pub fn encode_r1_map<C: Ciphersuite>(
-    packages: &BTreeMap<Identifier<C>, dkg::round1::Package<C>>,
-) -> Result<Vec<u8>, lib_error> {
-    codec::encode_map(
-        packages,
-        |id| Ok(id.serialize()),
-        |pkg| pkg.serialize().map_err(ser_err),
-    )
-}
-
 pub fn decode_r1_map<C: Ciphersuite>(
     data: &[u8],
 ) -> Result<BTreeMap<Identifier<C>, dkg::round1::Package<C>>, lib_error> {

@@ -6,14 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
-	"strings"
-	"time"
 
-	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	orch "github.com/vultisig/frosty-lib/client/shared/orchestration"
 	"github.com/vultisig/frosty-lib/client/shared/relay"
 	"github.com/vultisig/frosty-lib/client/shared/session"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
 )
 
 type KeygenResult struct {
@@ -23,15 +21,9 @@ type KeygenResult struct {
 	Birthday      uint64
 }
 
-type CeremonyResult struct {
-	Blame *session.BlameResult
-}
+type CeremonyResult = orch.CeremonyResult
 
-type RoundMessage struct {
-	SenderID   uint16 `json:"sender_id"`
-	Data       string `json:"data"`
-	ReceiverID uint16 `json:"receiver_id,omitempty"`
-}
+type RoundMessage = orch.RoundMessage
 
 func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, maxSigners, minSigners uint16, allParties []string, birthday uint64) ([]byte, *CeremonyResult, error) {
 	parties := BuildPartyInfo(allParties)
@@ -53,7 +45,7 @@ func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 		MsgReceiver: func(msg []byte, i int) ([]byte, error) { return frozt.DkgSessionMsgReceiver(sess, msg, i) },
 	})
 	if err != nil {
-		blame := handleBlame(ctx, client, sessionID, partyID, allParties, err)
+		blame := handleBlame(client, sessionID, partyID, allParties, err)
 		return nil, blame, fmt.Errorf("dkg session run: %w", err)
 	}
 
@@ -79,45 +71,7 @@ func BuildPartyInfo(parties []string) []frozt.PartyInfo {
 	return infos
 }
 
-func collectMessages(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, expected int) ([]RoundMessage, error) {
-	var collected []RoundMessage
-	seen := make(map[uint16]bool)
-
-	for len(collected) < expected {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		msgs, err := client.GetMessages(ctx, sessionID, partyID, messageID)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, m := range msgs {
-			body, decErr := client.DecryptAndVerify(m)
-			if decErr != nil {
-				return nil, fmt.Errorf("decrypt round message: %w", decErr)
-			}
-			var rm RoundMessage
-			err = json.Unmarshal([]byte(body), &rm)
-			if err != nil {
-				return nil, fmt.Errorf("unmarshal round message: %w", err)
-			}
-			if !seen[rm.SenderID] {
-				seen[rm.SenderID] = true
-				collected = append(collected, rm)
-			}
-		}
-
-		if len(collected) < expected {
-			time.Sleep(client.MessagePollInterval)
-		}
-	}
-
-	return collected, nil
-}
+var collectMessages = orch.CollectMessages
 
 func buildRoundMap(messages []RoundMessage) ([]frozt.MapEntry, error) {
 	entries := make([]frozt.MapEntry, 0, len(messages))
@@ -169,38 +123,13 @@ func sendPerRecipient(ctx context.Context, client *relay.RelayClient, sessionID,
 	return nil
 }
 
-func OtherParties(all []string, self string) []string {
-	var others []string
-	for _, p := range all {
-		if p != self {
-			others = append(others, p)
-		}
-	}
-	return others
-}
+var OtherParties = orch.OtherParties
 
-func IsCoordinatorParty(partyID string, parties []string) bool {
-	return partyID == getCoordinatorPartyID(parties)
-}
+var IsCoordinatorParty = orch.IsCoordinatorParty
 
-func getCoordinatorPartyID(parties []string) string {
-	sorted := make([]string, len(parties))
-	copy(sorted, parties)
-	sort.Strings(sorted)
-	return sorted[0]
-}
+var getCoordinatorPartyID = orch.GetCoordinatorPartyID
 
-func buildPartyIdentifierMap(parties []string) map[uint16]string {
-	sorted := make([]string, len(parties))
-	copy(sorted, parties)
-	sort.Strings(sorted)
-
-	m := make(map[uint16]string, len(sorted))
-	for i, p := range sorted {
-		m[uint16(i+1)] = p
-	}
-	return m
-}
+var buildPartyIdentifierMap = orch.BuildPartyIdentifierMap
 
 func verifyMetadataConsistency(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, metadata []byte, allParties []string) error {
 	hashBytes, hashErr := frozt.KeygenMetadataHash(metadata)
@@ -248,59 +177,8 @@ func verifyMetadataConsistency(ctx context.Context, client *relay.RelayClient, s
 	return nil
 }
 
-func WaitForMessage(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, parse func(string) error) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+var WaitForMessage = orch.WaitForMessage
 
-		msgs, err := client.GetMessages(ctx, sessionID, partyID, messageID)
-		if err != nil {
-			return err
-		}
-
-		if len(msgs) > 0 {
-			body, decErr := client.DecryptAndVerify(msgs[0])
-			if decErr != nil {
-				return fmt.Errorf("decrypt message: %w", decErr)
-			}
-			return parse(body)
-		}
-
-		time.Sleep(client.MessagePollInterval)
-	}
-}
-
-func handleBlame(_ context.Context, client *relay.RelayClient, sessionID, partyID string, allParties []string, sessionErr error) *CeremonyResult {
-	idToName := buildPartyIdentifierMap(allParties)
-
-	var report session.BlameReport
-	report.Reporter = partyID
-
-	blamedID := frozt.LastBlamedParty()
-	if blamedID > 0 {
-		report.BlameType = session.BlameCrypto
-		report.BlamedID = blamedID
-		name, ok := idToName[blamedID]
-		if ok {
-			report.BlamedParty = name
-		}
-	} else if strings.Contains(sessionErr.Error(), "context") {
-		report.BlameType = session.BlameAbsent
-	} else {
-		report.BlameType = session.BlameUnknown
-	}
-
-	blameCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	blameResult, err := session.ExchangeBlame(blameCtx, client, sessionID, partyID, allParties, report)
-	if err != nil {
-		log.Printf("[blame:%s] exchange failed: %v", partyID, err)
-		return &CeremonyResult{Blame: &session.BlameResult{Reports: []session.BlameReport{report}}}
-	}
-
-	return &CeremonyResult{Blame: blameResult}
+func handleBlame(client *relay.RelayClient, sessionID, partyID string, allParties []string, sessionErr error) *CeremonyResult {
+	return orch.HandleBlame(client, sessionID, partyID, allParties, sessionErr, frozt.LastBlamedParty)
 }

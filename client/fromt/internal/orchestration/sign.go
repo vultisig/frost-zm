@@ -29,12 +29,12 @@ type SignShareMessage struct {
 	Share    string `json:"share"`
 }
 
-func RunSign(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, keyShare, message []byte, signerParties []string) (*SignResult, error) {
+func RunSign(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, keyShare, message []byte, signerParties []string) (*SignResult, *CeremonyResult, error) {
 	isCoordinator := IsCoordinatorParty(partyID, signerParties)
 
 	nonces, commitmentBytes, err := fromt.SignCommit(keyShare)
 	if err != nil {
-		return nil, fmt.Errorf("sign commit: %w", err)
+		return nil, nil, fmt.Errorf("sign commit: %w", err)
 	}
 
 	commitMsg := CommitmentMessage{
@@ -43,7 +43,7 @@ func RunSign(ctx context.Context, client *relay.RelayClient, sessionID, partyID 
 	}
 	commitMsgBytes, err := json.Marshal(commitMsg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal commitment: %w", err)
+		return nil, nil, fmt.Errorf("marshal commitment: %w", err)
 	}
 
 	recipients := OtherParties(signerParties, partyID)
@@ -54,17 +54,19 @@ func RunSign(ctx context.Context, client *relay.RelayClient, sessionID, partyID 
 		Body:      string(commitMsgBytes),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("send commitment: %w", err)
+		return nil, nil, fmt.Errorf("send commitment: %w", err)
 	}
 
 	_, err = client.WaitForBarrier(ctx, sessionID, "sign-commit", partyID, 1, len(signerParties))
 	if err != nil {
-		return nil, fmt.Errorf("barrier sign-commit: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("barrier sign-commit: %w", err)
 	}
 
 	commitMessages, err := collectCommitments(ctx, client, sessionID, partyID, "sign-commit", len(signerParties)-1)
 	if err != nil {
-		return nil, fmt.Errorf("collect commitments: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("collect commitments: %w", err)
 	}
 
 	allCommitments := append(commitMessages, CommitmentMessage{
@@ -74,32 +76,33 @@ func RunSign(ctx context.Context, client *relay.RelayClient, sessionID, partyID 
 
 	commitmentsMap, err := buildCommitmentsMap(allCommitments)
 	if err != nil {
-		return nil, fmt.Errorf("build commitments map: %w", err)
+		return nil, nil, fmt.Errorf("build commitments map: %w", err)
 	}
 	commitmentsEncoded := fromt.EncodeMap(commitmentsMap)
 
 	var result *SignResult
+	var blame *CeremonyResult
 	if isCoordinator {
-		result, err = runCoordinator(ctx, client, sessionID, partyID, identifier, nonces, keyShare, message, commitmentsEncoded, signerParties)
+		result, blame, err = runCoordinator(ctx, client, sessionID, partyID, identifier, nonces, keyShare, message, commitmentsEncoded, signerParties)
 	} else {
-		result, err = runSigner(ctx, client, sessionID, partyID, identifier, nonces, keyShare, message, commitmentsEncoded, signerParties)
+		result, blame, err = runSigner(ctx, client, sessionID, partyID, identifier, nonces, keyShare, message, commitmentsEncoded, signerParties)
 	}
 	if err != nil {
-		return nil, err
+		return nil, blame, err
 	}
 
 	_, err = client.WaitForBarrier(ctx, sessionID, "sign-done", partyID, 1, len(signerParties))
 	if err != nil {
-		return nil, fmt.Errorf("barrier sign-done: %w", err)
+		return nil, nil, fmt.Errorf("barrier sign-done: %w", err)
 	}
 
-	return result, nil
+	return result, nil, nil
 }
 
-func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, nonces *fromt.NoncesHandle, keyShare, message, commitmentsEncoded []byte, signerParties []string) (*SignResult, error) {
+func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, nonces *fromt.NoncesHandle, keyShare, message, commitmentsEncoded []byte, signerParties []string) (*SignResult, *CeremonyResult, error) {
 	signingPackage, err := fromt.SignCreatePackage(message, commitmentsEncoded)
 	if err != nil {
-		return nil, fmt.Errorf("sign create package: %w", err)
+		return nil, nil, fmt.Errorf("sign create package: %w", err)
 	}
 
 	spMsg := SigningPackageMessage{
@@ -107,7 +110,7 @@ func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, p
 	}
 	spMsgBytes, err := json.Marshal(spMsg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal signing package: %w", err)
+		return nil, nil, fmt.Errorf("marshal signing package: %w", err)
 	}
 
 	recipients := OtherParties(signerParties, partyID)
@@ -118,33 +121,35 @@ func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, p
 		Body:      string(spMsgBytes),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("send signing package: %w", err)
+		return nil, nil, fmt.Errorf("send signing package: %w", err)
 	}
 
 	myShare, err := fromt.Sign(signingPackage, nonces, keyShare)
 	if err != nil {
-		return nil, fmt.Errorf("sign: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("sign: %w", err)
 	}
 
 	shares, err := collectSignShares(ctx, client, sessionID, partyID, "sign-share", len(signerParties)-1)
 	if err != nil {
-		return nil, fmt.Errorf("collect sign shares: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("collect sign shares: %w", err)
 	}
 
 	myIDBytes, err := fromt.EncodeIdentifier(identifier)
 	if err != nil {
-		return nil, fmt.Errorf("encode my id: %w", err)
+		return nil, nil, fmt.Errorf("encode my id: %w", err)
 	}
 
 	allShareEntries := []fromt.MapEntry{{ID: myIDBytes, Value: myShare}}
 	for _, s := range shares {
 		idBytes, encErr := fromt.EncodeIdentifier(s.SenderID)
 		if encErr != nil {
-			return nil, fmt.Errorf("encode share sender id: %w", encErr)
+			return nil, nil, fmt.Errorf("encode share sender id: %w", encErr)
 		}
 		shareData, decErr := base64.StdEncoding.DecodeString(s.Share)
 		if decErr != nil {
-			return nil, fmt.Errorf("decode share data: %w", decErr)
+			return nil, nil, fmt.Errorf("decode share data: %w", decErr)
 		}
 		allShareEntries = append(allShareEntries, fromt.MapEntry{ID: idBytes, Value: shareData})
 	}
@@ -152,7 +157,8 @@ func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, p
 	sharesEncoded := fromt.EncodeMap(allShareEntries)
 	signature, err := fromt.SignAggregate(signingPackage, sharesEncoded, keyShare)
 	if err != nil {
-		return nil, fmt.Errorf("sign aggregate: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("sign aggregate: %w", err)
 	}
 
 	sigMsg := base64.StdEncoding.EncodeToString(signature)
@@ -163,13 +169,13 @@ func runCoordinator(ctx context.Context, client *relay.RelayClient, sessionID, p
 		Body:      sigMsg,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("broadcast signature: %w", err)
+		return nil, nil, fmt.Errorf("broadcast signature: %w", err)
 	}
 
-	return &SignResult{Signature: signature}, nil
+	return &SignResult{Signature: signature}, nil, nil
 }
 
-func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, nonces *fromt.NoncesHandle, keyShare, message, commitmentsEncoded []byte, signerParties []string) (*SignResult, error) {
+func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier uint16, nonces *fromt.NoncesHandle, keyShare, message, commitmentsEncoded []byte, signerParties []string) (*SignResult, *CeremonyResult, error) {
 	coordinatorID := getCoordinatorPartyID(signerParties)
 
 	var spMsg SigningPackageMessage
@@ -177,17 +183,19 @@ func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 		return json.Unmarshal([]byte(body), &spMsg)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("receive signing package: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("receive signing package: %w", err)
 	}
 
 	signingPackage, err := base64.StdEncoding.DecodeString(spMsg.SigningPackage)
 	if err != nil {
-		return nil, fmt.Errorf("decode signing package: %w", err)
+		return nil, nil, fmt.Errorf("decode signing package: %w", err)
 	}
 
 	share, err := fromt.Sign(signingPackage, nonces, keyShare)
 	if err != nil {
-		return nil, fmt.Errorf("sign: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("sign: %w", err)
 	}
 
 	shareMsg := SignShareMessage{
@@ -196,7 +204,7 @@ func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 	}
 	shareMsgBytes, err := json.Marshal(shareMsg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal share: %w", err)
+		return nil, nil, fmt.Errorf("marshal share: %w", err)
 	}
 
 	err = client.SendMessage(ctx, sessionID, "sign-share", relay.Message{
@@ -206,7 +214,7 @@ func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 		Body:      string(shareMsgBytes),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("send share: %w", err)
+		return nil, nil, fmt.Errorf("send share: %w", err)
 	}
 
 	var signature []byte
@@ -219,10 +227,11 @@ func runSigner(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("receive signature: %w", err)
+		blame := handleBlame(client, sessionID, partyID, signerParties, err)
+		return nil, blame, fmt.Errorf("receive signature: %w", err)
 	}
 
-	return &SignResult{Signature: signature}, nil
+	return &SignResult{Signature: signature}, nil, nil
 }
 
 func collectCommitments(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string, expected int) ([]CommitmentMessage, error) {
