@@ -30,7 +30,7 @@ packages/
   fromt-sdk-ts/        Monero TypeScript SDK
 
 client/
-  shared/              Shared relay, session runner, vault format, config, keystore base
+  shared/              Shared relay, session runner, blame protocol, vault format, config, keystore base
   frozt/               Zcash client — Sapling spend, lightwalletd, Docker orchestration
   fromt/               Monero client — daemon RPC, address derivation, Docker orchestration
   vult/                Combined vault tests — multi-chain key import, vault round-trip
@@ -42,7 +42,7 @@ client/
 - Global handle table for opaque secret state across the FFI boundary
 - `go_slice` / `tss_buffer` FFI buffer types
 - Binary map codec (`[count:u32 LE] then N × {key_len, key, val_len, val}`)
-- Unified error enum (`lib_error`)
+- Unified error enum (`lib_error`) with `LIB_BLAME` for culprit-identified failures
 
 **frost-ceremony** — Generic FROST protocol functions parameterized by `C: Ciphersuite`:
 - `dkg_part1/2/3<C>` — 3-round distributed key generation
@@ -50,6 +50,7 @@ client/
 - `reshare_part1/3<C>` — threshold parameter rotation preserving the public key
 - `key_import_part1/3<C>` — import existing keys into threshold shares
 - `lagrange_coeff<C>` — Lagrange interpolation over the scalar field
+- `blame::frost_err_to_blame<C>` — extract culprit identity from frost-core errors
 
 ---
 
@@ -246,6 +247,60 @@ Six protocol extensions compose upstream primitives. All live in `frost-ceremony
 **Keyshare ↔ Monero key conversion** (`fromt-lib/src/monero/spend.rs:convert_keyshare`) — Bridges FROST `KeyPackage<Ed25519Sha512>` into `modular-frost`'s `ThresholdKeys<dalek_ff_group::Ed25519>` by extracting scalar shares and verification points. This is pure format conversion — no new crypto, just re-encoding the same values for the `monero-clsag` API.
 
 Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay client) is non-cryptographic plumbing.
+
+---
+
+## Blame Protocol
+
+When a ceremony fails — a party sends invalid data, provides a bad proof of knowledge, or simply disappears — honest parties need to agree on who caused the failure before they can retry without the bad actor.
+
+### How it works
+
+**Rust layer** — frost-core already identifies culprits for three error types:
+- `InvalidProofOfKnowledge` — bad commitment proof in DKG round 1 (detected in `dkg::part2`)
+- `InvalidSecretShare` — bad secret share vs commitments (detected in `dkg::part3`)
+- `InvalidSignatureShare` — bad signature share (detected in `aggregate`)
+
+Every `map_err` on these frost-core calls now preserves the culprit's frost ID via `frost_ceremony::blame::frost_err_to_blame()`, which stores the blamed party in a thread-local and returns `LIB_BLAME`. The Go layer retrieves the ID via `frost_last_blamed_party()` (C FFI) / `frozt.LastBlamedParty()` / `fromt.LastBlamedParty()`.
+
+**Go layer** — after a ceremony fails, the orchestration calls `handleBlame()` which:
+1. Checks `LastBlamedParty()` — if non-zero, it's a crypto blame (frost-core identified the culprit)
+2. If the context was cancelled, it's an absence blame (party never sent a message)
+3. Broadcasts a `BlameReport` to all parties via the relay
+4. Waits at a barrier, collects reports from other parties
+5. Tallies: if a majority (>N/2) blame the same party, consensus is reached
+6. Returns `BlameResult` with `Agreed`, `BlamedParty`, and all individual reports
+
+### Blame types
+
+| Type | Trigger | Detection layer |
+|------|---------|-----------------|
+| `crypto` | Party sends invalid proof, share, or signature | Rust (frost-core `culprit()`) |
+| `absent` | Party never sends a required message | Go (context timeout) |
+| `unknown` | Error without identifiable culprit | Go (fallback) |
+
+### Message format
+
+```json
+{
+  "reporter": "party-alice",
+  "blame_type": "crypto",
+  "blamed_party": "party-bob",
+  "blamed_id": 2,
+  "round": "",
+  "error_code": 0
+}
+```
+
+### Key files
+
+| File | Role |
+|------|------|
+| `crates/frost-ffi/src/errors.rs` | `LIB_BLAME` error code, thread-local blamed party storage, `frost_last_blamed_party()` FFI |
+| `crates/frost-ceremony/src/blame.rs` | `identifier_to_u16()`, `frost_err_to_blame()` — culprit extraction from frost-core errors |
+| `client/shared/session/blame.go` | `BlameReport`, `BlameResult`, `ExchangeBlame()` — relay-based blame consensus |
+| `client/frozt/internal/orchestration/keygen.go` | `handleBlame()` — orchestration integration (frozt) |
+| `client/fromt/internal/orchestration/keygen.go` | `handleBlame()` — orchestration integration (fromt) |
 
 ---
 
