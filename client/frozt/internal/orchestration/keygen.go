@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
-	"github.com/vultisig/frost-zm/client/shared/session"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/shared/session"
 )
 
 type KeygenResult struct {

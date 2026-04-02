@@ -18,11 +18,11 @@ import (
 	v1 "github.com/vultisig/commondata/go/vultisig/vault/v1"
 	keygenV1 "github.com/vultisig/commondata/go/vultisig/keygen/v1"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	frozt "github.com/vultisig/frost-zm/go/frozt"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
 
-	sharedconfig "github.com/vultisig/frost-zm/client/shared/config"
-	sharedvault "github.com/vultisig/frost-zm/client/shared/vault"
+	sharedconfig "github.com/vultisig/frosty-lib/client/shared/config"
+	sharedvault "github.com/vultisig/frosty-lib/client/shared/vault"
 )
 
 func loadDotEnv(t *testing.T) map[string]string {

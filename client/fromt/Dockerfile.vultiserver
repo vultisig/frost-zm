@@ -1,8 +1,8 @@
 FROM rust:1.89-bookworm AS rust-builder
 
 WORKDIR /build
-COPY frost-zm/Cargo.toml frost-zm/Cargo.lock ./
-COPY frost-zm/crates/ crates/
+COPY frosty-lib/Cargo.toml frosty-lib/Cargo.lock ./
+COPY frosty-lib/crates/ crates/
 
 RUN cargo build --release -p fromt-lib
 
@@ -13,9 +13,9 @@ RUN ldconfig
 
 WORKDIR /build
 
-COPY frost-zm/go/ go/
-COPY frost-zm/client/fromt/ client/fromt/
-COPY frost-zm/client/shared/ client/shared/
+COPY frosty-lib/go/ go/
+COPY frosty-lib/client/fromt/ client/fromt/
+COPY frosty-lib/client/shared/ client/shared/
 
 COPY --from=rust-builder /build/crates/fromt-lib/include/fromt-lib.h go/fromt/includes/
 RUN ARCH=$(dpkg --print-architecture) && \

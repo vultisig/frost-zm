@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
 )
 
 func DecryptFullNote(ctx context.Context, scanner *lightwalletd.Scanner, ivk []byte, note *lightwalletd.FoundNote) ([]byte, error) {

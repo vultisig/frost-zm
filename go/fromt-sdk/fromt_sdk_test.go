@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
 )
 
 func mnemonic2Seed(t *testing.T) []byte {

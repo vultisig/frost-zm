@@ -5,11 +5,11 @@ import (
 	"log"
 	"strconv"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	fromtsdk "github.com/vultisig/frost-zm/go/fromt-sdk"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	fromtsdk "github.com/vultisig/frosty-lib/go/fromt-sdk"
 
-	"github.com/vultisig/frost-zm/client/fromt/internal/config"
-	"github.com/vultisig/frost-zm/client/fromt/internal/mnemonic"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/config"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/mnemonic"
 )
 
 func main() {

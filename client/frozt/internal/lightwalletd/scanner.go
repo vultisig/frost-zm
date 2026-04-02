@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

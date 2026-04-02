@@ -1090,7 +1090,7 @@ const file_internal_lightwalletd_compact_formats_proto_rawDesc = "" +
 	"\rGetLightdInfo\x12\x1c.cash.z.wallet.sdk.rpc.Empty\x1a!.cash.z.wallet.sdk.rpc.LightdInfo\"\x00\x12Z\n" +
 	"\x0eGetTransaction\x12\x1f.cash.z.wallet.sdk.rpc.TxFilter\x1a%.cash.z.wallet.sdk.rpc.RawTransaction\"\x00\x12R\n" +
 	"\fGetTreeState\x12\x1e.cash.z.wallet.sdk.rpc.BlockID\x1a .cash.z.wallet.sdk.rpc.TreeState\"\x00\x12_\n" +
-	"\x0fSendTransaction\x12%.cash.z.wallet.sdk.rpc.RawTransaction\x1a#.cash.z.wallet.sdk.rpc.SendResponse\"\x00BAZ?github.com/vultisig/frost-zm/client/frozt/internal/lightwalletdb\x06proto3"
+	"\x0fSendTransaction\x12%.cash.z.wallet.sdk.rpc.RawTransaction\x1a#.cash.z.wallet.sdk.rpc.SendResponse\"\x00BAZ?github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletdb\x06proto3"
 
 var (
 	file_internal_lightwalletd_compact_formats_proto_rawDescOnce sync.Once

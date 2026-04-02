@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
 )
 
 func BuildWitness(ctx context.Context, scanner *lightwalletd.Scanner, note *lightwalletd.FoundNote, chainTip uint64, partyID string) ([]byte, error) {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/vultisig/frost-zm/client/fromt/internal/orchestration"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/orchestration"
 )
 
 func (n *Node) runSign(ctx context.Context) error {

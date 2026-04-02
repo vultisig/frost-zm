@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/frozt/internal/orchestration"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/orchestration"
 )
 
 func (n *Node) runKeygen(ctx context.Context) error {

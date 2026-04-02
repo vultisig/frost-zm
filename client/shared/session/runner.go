@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type SessionFuncs struct {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type BlameType string

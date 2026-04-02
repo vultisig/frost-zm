@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
-	"github.com/vultisig/frost-zm/client/shared/session"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/shared/session"
 )
 
 type KeygenResult struct {

@@ -1,4 +1,4 @@
-module github.com/vultisig/frost-zm/client/fromt
+module github.com/vultisig/frosty-lib/client/fromt
 
 go 1.24.0
 
@@ -7,8 +7,8 @@ require (
 	github.com/dimalinux/gopherphis v0.0.0-20231002075534-34c5cdaebac1
 	github.com/tyler-smith/go-bip32 v1.0.0
 	github.com/tyler-smith/go-bip39 v1.1.0
-	github.com/vultisig/frost-zm/client/shared v0.0.0
-	github.com/vultisig/frost-zm/go v0.0.0
+	github.com/vultisig/frosty-lib/client/shared v0.0.0
+	github.com/vultisig/frosty-lib/go v0.0.0
 	golang.org/x/crypto v0.48.0
 )
 
@@ -22,8 +22,8 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 )
 
-replace github.com/vultisig/frost-zm/go => ../../go
+replace github.com/vultisig/frosty-lib/go => ../../go
 
-replace github.com/vultisig/frost-zm/client/shared => ../shared
+replace github.com/vultisig/frosty-lib/client/shared => ../shared
 
 replace github.com/vultisig/commondata => ../../../commondata

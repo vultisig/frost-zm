@@ -5,7 +5,7 @@ package fromt
 */
 import "C"
 
-import "github.com/vultisig/frost-zm/go/frostgo"
+import "github.com/vultisig/frosty-lib/go/frostgo"
 
 func toError(code int) error {
 	return frostgo.ToError("fromt", code)

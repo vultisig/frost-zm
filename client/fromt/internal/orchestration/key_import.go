@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 func RunKeyImport(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, identifier, maxSigners, minSigners uint16, allParties []string, spendKey, expectedVK []byte, birthday uint64) (*KeygenResult, error) {

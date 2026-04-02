@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
 
-	"github.com/vultisig/frost-zm/client/frozt/internal/bip39"
-	sharedvault "github.com/vultisig/frost-zm/client/shared/vault"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/bip39"
+	sharedvault "github.com/vultisig/frosty-lib/client/shared/vault"
 
 	v1 "github.com/vultisig/commondata/go/vultisig/vault/v1"
 	keygenV1 "github.com/vultisig/commondata/go/vultisig/keygen/v1"

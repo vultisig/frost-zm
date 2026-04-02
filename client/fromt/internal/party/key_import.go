@@ -9,10 +9,10 @@ import (
 	"log"
 	"time"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	"github.com/vultisig/frost-zm/client/fromt/internal/mnemonic"
-	"github.com/vultisig/frost-zm/client/fromt/internal/orchestration"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/mnemonic"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/orchestration"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type expectedVKMessage struct {

@@ -1,6 +1,6 @@
 # Audit Guide
 
-This document identifies the security-critical code in frost-zm and the properties it claims. It is intended for cryptographic auditors.
+This document identifies the security-critical code in frosty-lib and the properties it claims. It is intended for cryptographic auditors.
 
 For build instructions, architecture overview, and upstream dependency tables, see [README.md](README.md).
 

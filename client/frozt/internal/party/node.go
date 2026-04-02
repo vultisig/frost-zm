@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vultisig/frost-zm/client/shared/relay"
-	"github.com/vultisig/frost-zm/client/frozt/internal/store"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/store"
 )
 
 type Config struct {

@@ -13,11 +13,11 @@ import (
 	"testing"
 
 	gobip39 "github.com/tyler-smith/go-bip39"
-	frozt "github.com/vultisig/frost-zm/go/frozt"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
 
-	"github.com/vultisig/frost-zm/client/frozt/internal/bip39"
-	"github.com/vultisig/frost-zm/client/frozt/internal/config"
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/bip39"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/config"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
 )
 
 type keyImportResult struct {

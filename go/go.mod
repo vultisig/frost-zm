@@ -1,3 +1,3 @@
-module github.com/vultisig/frost-zm/go
+module github.com/vultisig/frosty-lib/go
 
 go 1.22

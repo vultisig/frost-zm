@@ -8,7 +8,7 @@ import (
 
 	legacymnemonic "github.com/dimalinux/gopherphis/mnemonic"
 	"github.com/tyler-smith/go-bip39"
-	fromt "github.com/vultisig/frost-zm/go/fromt"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
 )
 
 func TestPolyseed_KnownVector(t *testing.T) {

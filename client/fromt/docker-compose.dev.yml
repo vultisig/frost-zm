@@ -13,7 +13,7 @@ services:
   relay:
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile.relay
+      dockerfile: frosty-lib/client/fromt/Dockerfile.relay
     ports:
       - "9091:9090"
     depends_on:
@@ -29,7 +29,7 @@ services:
     platform: linux/amd64
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile.vultiserver
+      dockerfile: frosty-lib/client/fromt/Dockerfile.vultiserver
     command: ["vultisigner"]
     ports:
       - "8081:8080"
@@ -52,7 +52,7 @@ services:
     platform: linux/amd64
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile.vultiserver
+      dockerfile: frosty-lib/client/fromt/Dockerfile.vultiserver
     command: ["worker"]
     volumes:
       - vultiserver-data:/data/vaults

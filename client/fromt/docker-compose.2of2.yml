@@ -12,7 +12,7 @@ services:
   relay:
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile.relay
+      dockerfile: frosty-lib/client/fromt/Dockerfile.relay
     depends_on:
       redis:
         condition: service_healthy
@@ -25,7 +25,7 @@ services:
   party-1:
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile
+      dockerfile: frosty-lib/client/fromt/Dockerfile
     environment:
       - RELAY_URL=http://relay:9090
       - PARTY_ID=party-1
@@ -54,7 +54,7 @@ services:
   party-2:
     build:
       context: ../../..
-      dockerfile: frost-zm/client/fromt/Dockerfile
+      dockerfile: frosty-lib/client/fromt/Dockerfile
     environment:
       - RELAY_URL=http://relay:9090
       - PARTY_ID=party-2

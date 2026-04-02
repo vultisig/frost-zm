@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
 )
 
 func (n *Node) runAddress() error {

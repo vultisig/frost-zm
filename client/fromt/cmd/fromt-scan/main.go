@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	fromtsdk "github.com/vultisig/frost-zm/go/fromt-sdk"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	fromtsdk "github.com/vultisig/frosty-lib/go/fromt-sdk"
 )
 
 func main() {

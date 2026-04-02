@@ -6,8 +6,8 @@ import (
 	"log"
 	"sort"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
 )
 
 const BaseFee = uint64(5_000)

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type KeyImportConfig struct {

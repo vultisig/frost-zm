@@ -5,7 +5,7 @@ package frozt
 */
 import "C"
 
-import "github.com/vultisig/frost-zm/go/frostgo"
+import "github.com/vultisig/frosty-lib/go/frostgo"
 
 func mapLibError(code int) error {
 	return frostgo.ToError("frozt", code)

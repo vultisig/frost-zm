@@ -3,7 +3,7 @@ package frozt
 import (
 	"fmt"
 
-	"github.com/vultisig/frost-zm/go/frostgo"
+	"github.com/vultisig/frosty-lib/go/frostgo"
 )
 
 type MapEntry struct {

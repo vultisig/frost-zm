@@ -1,7 +1,7 @@
 package store
 
 import (
-	"github.com/vultisig/frost-zm/client/shared/store"
+	"github.com/vultisig/frosty-lib/client/shared/store"
 )
 
 type Keystore struct {

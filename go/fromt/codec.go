@@ -1,6 +1,6 @@
 package fromt
 
-import "github.com/vultisig/frost-zm/go/frostgo"
+import "github.com/vultisig/frosty-lib/go/frostgo"
 
 type MapEntry = frostgo.MapEntry
 

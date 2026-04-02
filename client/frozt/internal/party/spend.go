@@ -9,11 +9,11 @@ import (
 	"log"
 	"time"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
-	"github.com/vultisig/frost-zm/client/frozt/internal/orchestration"
-	"github.com/vultisig/frost-zm/client/shared/relay"
-	"github.com/vultisig/frost-zm/client/frozt/internal/spend"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/orchestration"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/spend"
 )
 
 type sighashMessage struct {

@@ -11,11 +11,11 @@ import (
 	"log"
 	"net/http"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	fromtsdk "github.com/vultisig/frost-zm/go/fromt-sdk"
-	"github.com/vultisig/frost-zm/client/fromt/internal/mnemonic"
-	"github.com/vultisig/frost-zm/client/fromt/internal/orchestration"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	fromtsdk "github.com/vultisig/frosty-lib/go/fromt-sdk"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/mnemonic"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/orchestration"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type signableTxMessage struct {

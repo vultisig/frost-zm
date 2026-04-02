@@ -1,4 +1,4 @@
-# frost-zm
+# frosty-lib
 
 Threshold signing for Zcash Sapling and Monero in a single workspace. Two FROST-based libraries — **frozt** (Zcash) and **fromt** (Monero) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
 

@@ -1,6 +1,6 @@
 syntax = "proto3";
 package cash.z.wallet.sdk.rpc;
-option go_package = "github.com/vultisig/frost-zm/poc/frozt/internal/lightwalletd";
+option go_package = "github.com/vultisig/frosty-lib/poc/frozt/internal/lightwalletd";
 
 message BlockID {
     uint64 height = 1;

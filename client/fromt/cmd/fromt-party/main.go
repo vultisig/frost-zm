@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/vultisig/frost-zm/client/fromt/internal/party"
+	"github.com/vultisig/frosty-lib/client/fromt/internal/party"
 )
 
 func main() {

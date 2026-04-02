@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	frozt "github.com/vultisig/frost-zm/go/frozt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type SignResult struct {

@@ -3,7 +3,7 @@ package spend
 import (
 	"testing"
 
-	"github.com/vultisig/frost-zm/client/frozt/internal/lightwalletd"
+	"github.com/vultisig/frosty-lib/client/frozt/internal/lightwalletd"
 )
 
 func TestComputeFee(t *testing.T) {

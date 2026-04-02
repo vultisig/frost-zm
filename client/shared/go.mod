@@ -1,4 +1,4 @@
-module github.com/vultisig/frost-zm/client/shared
+module github.com/vultisig/frosty-lib/client/shared
 
 go 1.24.0
 

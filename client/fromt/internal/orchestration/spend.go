@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	fromt "github.com/vultisig/frost-zm/go/fromt"
-	"github.com/vultisig/frost-zm/client/shared/relay"
+	fromt "github.com/vultisig/frosty-lib/go/fromt"
+	"github.com/vultisig/frosty-lib/client/shared/relay"
 )
 
 type SpendResult struct {
