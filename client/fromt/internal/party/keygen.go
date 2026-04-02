@@ -11,7 +11,7 @@ import (
 )
 
 func (n *Node) runKeygen(ctx context.Context) error {
-	bundle, err := orchestration.RunKeygen(
+	bundle, result, err := orchestration.RunKeygen(
 		ctx,
 		n.Client,
 		n.Config.SessionID,
@@ -23,6 +23,10 @@ func (n *Node) runKeygen(ctx context.Context) error {
 		n.Config.Birthday,
 	)
 	if err != nil {
+		if result != nil && result.Blame != nil {
+			log.Printf("[%s] Blame result: agreed=%v blamed=%s type=%s",
+				n.Config.PartyID, result.Blame.Agreed, result.Blame.BlamedParty, result.Blame.BlameType)
+		}
 		return fmt.Errorf("keygen failed: %w", err)
 	}
 

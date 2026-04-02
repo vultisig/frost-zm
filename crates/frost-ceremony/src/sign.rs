@@ -9,6 +9,7 @@ use frost_core::{
 };
 use frost_ffi::{codec, errors::lib_error};
 
+use crate::blame::frost_err_to_blame;
 use crate::dkg::ser_err;
 
 fn decode_commitments_map<C: Ciphersuite>(
@@ -59,7 +60,7 @@ pub fn sign<C: Ciphersuite>(
 ) -> Result<Vec<u8>, lib_error> {
     let share =
         frost_core::round2::sign(signing_package, nonces, key_package)
-            .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
     let share_bytes = share.serialize();
 
@@ -75,7 +76,7 @@ pub fn sign_aggregate<C: Ciphersuite>(
 
     let signature =
         frost_core::aggregate(signing_package, &shares, pub_key_package)
-            .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
     let sig_bytes = signature.serialize().map_err(ser_err)?;
 

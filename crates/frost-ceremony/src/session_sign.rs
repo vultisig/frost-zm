@@ -10,6 +10,7 @@ use frost_core::{
 use frost_ffi::errors::lib_error;
 use frost_session::relay::FrostChannel;
 
+use crate::blame::frost_err_to_blame;
 use crate::dkg::ser_err;
 
 pub async fn sign_run<C: Ciphersuite>(
@@ -43,7 +44,7 @@ pub async fn sign_run<C: Ciphersuite>(
     let signing_package = SigningPackage::<C>::new(commit_map, message);
 
     let share = frost_core::round2::sign(&signing_package, &nonces, key_package)
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
     let share_bytes = share.serialize();
     ch.broadcast(share_bytes).await;
 
@@ -59,7 +60,7 @@ pub async fn sign_run<C: Ciphersuite>(
     }
 
     let signature = frost_core::aggregate(&signing_package, &shares, pub_key_package)
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
     let sig_bytes = signature.serialize().map_err(ser_err)?;
     Ok(sig_bytes)

@@ -4,6 +4,7 @@ use frost_core::{Ciphersuite, Identifier, Scalar, keys::dkg};
 use frost_ffi::errors::lib_error;
 use frost_session::relay::FrostChannel;
 
+use crate::blame::frost_err_to_blame;
 use crate::dkg::ser_err;
 use crate::reshare::reshare_part1;
 use crate::session_dkg::{build_id_map, lookup_u16};
@@ -35,7 +36,7 @@ pub async fn reshare_run<C: Ciphersuite>(
     }
 
     let (secret2, r2_map) =
-        dkg::part2(secret1, &r1_map).map_err(|_| lib_error::LIB_DKG_ERROR)?;
+        dkg::part2(secret1, &r1_map).map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     for (recipient, pkg) in &r2_map {
         let recipient_u16 = lookup_u16::<C>(&id_map, recipient)?;
@@ -54,7 +55,7 @@ pub async fn reshare_run<C: Ciphersuite>(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret2, &r1_map, &r2_received)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let vk_bytes = pub_key_package.verifying_key().serialize().map_err(ser_err)?;
     if <[u8]>::ne(vk_bytes.as_ref(), expected_vk) {

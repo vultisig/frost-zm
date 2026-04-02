@@ -4,6 +4,7 @@ use frost_core::{
 };
 use frost_ffi::errors::lib_error;
 
+use crate::blame::frost_err_to_blame;
 use crate::dkg::{decode_r1_map, decode_r2_map, ser_err};
 
 pub fn decode_old_identifiers<C: Ciphersuite>(
@@ -99,7 +100,7 @@ pub fn reshare_part1<C: Ciphersuite>(
 
     let proof =
         dkg::compute_proof_of_knowledge::<C, _>(ident, &coefficients, &commitment, &mut rng)
-            .map_err(|_| lib_error::LIB_RESHARE_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_RESHARE_ERROR))?;
 
     let secret = dkg::round1::SecretPackage::new(
         ident,
@@ -130,7 +131,7 @@ pub fn reshare_part3<C: Ciphersuite>(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret, &r1_pkgs, &r2_pkgs)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     let vk_bytes = pub_key_package.verifying_key().serialize().map_err(ser_err)?;
     if <[u8]>::ne(vk_bytes.as_ref(), expected_verifying_key) {

@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
+	"strings"
 	"time"
 
 	frozt "github.com/vultisig/frost-zm/go/frozt"
@@ -21,23 +23,27 @@ type KeygenResult struct {
 	Birthday      uint64
 }
 
+type CeremonyResult struct {
+	Blame *session.BlameResult
+}
+
 type RoundMessage struct {
 	SenderID   uint16 `json:"sender_id"`
 	Data       string `json:"data"`
 	ReceiverID uint16 `json:"receiver_id,omitempty"`
 }
 
-func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, maxSigners, minSigners uint16, allParties []string, birthday uint64) ([]byte, error) {
+func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyID string, maxSigners, minSigners uint16, allParties []string, birthday uint64) ([]byte, *CeremonyResult, error) {
 	parties := BuildPartyInfo(allParties)
 
 	setupBytes, err := frozt.DkgSetupMsgNew(maxSigners, minSigners, parties, birthday)
 	if err != nil {
-		return nil, fmt.Errorf("dkg setup: %w", err)
+		return nil, nil, fmt.Errorf("dkg setup: %w", err)
 	}
 
 	sess, err := frozt.DkgSessionFromSetup(setupBytes, []byte(partyID))
 	if err != nil {
-		return nil, fmt.Errorf("dkg session: %w", err)
+		return nil, nil, fmt.Errorf("dkg session: %w", err)
 	}
 	defer frozt.DkgSessionFree(sess)
 
@@ -47,14 +53,15 @@ func RunKeygen(ctx context.Context, client *relay.RelayClient, sessionID, partyI
 		MsgReceiver: func(msg []byte, i int) ([]byte, error) { return frozt.DkgSessionMsgReceiver(sess, msg, i) },
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dkg session run: %w", err)
+		blame := handleBlame(ctx, client, sessionID, partyID, allParties, err)
+		return nil, blame, fmt.Errorf("dkg session run: %w", err)
 	}
 
 	bundle, err := frozt.DkgSessionResult(sess)
 	if err != nil {
-		return nil, fmt.Errorf("dkg result: %w", err)
+		return nil, nil, fmt.Errorf("dkg result: %w", err)
 	}
-	return bundle, nil
+	return bundle, nil, nil
 }
 
 func BuildPartyInfo(parties []string) []frozt.PartyInfo {
@@ -264,4 +271,36 @@ func WaitForMessage(ctx context.Context, client *relay.RelayClient, sessionID, p
 
 		time.Sleep(client.MessagePollInterval)
 	}
+}
+
+func handleBlame(_ context.Context, client *relay.RelayClient, sessionID, partyID string, allParties []string, sessionErr error) *CeremonyResult {
+	idToName := buildPartyIdentifierMap(allParties)
+
+	var report session.BlameReport
+	report.Reporter = partyID
+
+	blamedID := frozt.LastBlamedParty()
+	if blamedID > 0 {
+		report.BlameType = session.BlameCrypto
+		report.BlamedID = blamedID
+		name, ok := idToName[blamedID]
+		if ok {
+			report.BlamedParty = name
+		}
+	} else if strings.Contains(sessionErr.Error(), "context") {
+		report.BlameType = session.BlameAbsent
+	} else {
+		report.BlameType = session.BlameUnknown
+	}
+
+	blameCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	blameResult, err := session.ExchangeBlame(blameCtx, client, sessionID, partyID, allParties, report)
+	if err != nil {
+		log.Printf("[blame:%s] exchange failed: %v", partyID, err)
+		return &CeremonyResult{Blame: &session.BlameResult{Reports: []session.BlameReport{report}}}
+	}
+
+	return &CeremonyResult{Blame: blameResult}
 }

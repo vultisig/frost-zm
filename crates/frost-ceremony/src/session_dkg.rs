@@ -4,6 +4,7 @@ use frost_core::{Ciphersuite, Identifier, keys::dkg};
 use frost_ffi::errors::lib_error;
 use frost_session::relay::FrostChannel;
 
+use crate::blame::frost_err_to_blame;
 use crate::dkg::ser_err;
 
 pub async fn dkg_run<C: Ciphersuite>(
@@ -20,7 +21,7 @@ pub async fn dkg_run<C: Ciphersuite>(
         let mut rng = rand::thread_rng();
         let (secret, package) =
             dkg::part1::<C, _>(ident, max_signers, min_signers, &mut rng)
-                .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+                .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
         let bytes = package.serialize().map_err(ser_err)?;
         (secret, bytes)
     };
@@ -37,7 +38,7 @@ pub async fn dkg_run<C: Ciphersuite>(
     }
 
     let (secret2, r2_map) =
-        dkg::part2(secret1, &r1_map).map_err(|_| lib_error::LIB_DKG_ERROR)?;
+        dkg::part2(secret1, &r1_map).map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     for (recipient, pkg) in &r2_map {
         let recipient_u16 = lookup_u16::<C>(&id_map, recipient)?;
@@ -56,7 +57,7 @@ pub async fn dkg_run<C: Ciphersuite>(
 
     let (key_package, pub_key_package) =
         dkg::part3(&secret2, &r1_map, &r2_received)
-            .map_err(|_| lib_error::LIB_DKG_ERROR)?;
+            .map_err(|e| frost_err_to_blame(e, lib_error::LIB_DKG_ERROR))?;
 
     Ok((key_package, pub_key_package))
 }

@@ -41,7 +41,10 @@ typedef enum {
     LIB_CKD_ERROR,
     LIB_ADDRESS_ERROR,
     LIB_SESSION_NOT_READY,
+    LIB_BLAME = 100,
 } lib_error;
+
+uint16_t frost_last_blamed_party(void);
 
 /* Utility */
 void tss_buffer_free(tss_buffer *buf);

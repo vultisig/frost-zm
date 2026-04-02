@@ -56,6 +56,32 @@ pub enum lib_error {
 
     #[error("Session not ready")]
     LIB_SESSION_NOT_READY,
+
+    #[error("Blame")]
+    LIB_BLAME,
+}
+
+use std::cell::Cell;
+
+thread_local! {
+    static LAST_BLAMED_ID: Cell<u16> = const { Cell::new(0) };
+}
+
+pub fn set_blamed_party(frost_id: u16) {
+    LAST_BLAMED_ID.with(|c| c.set(frost_id));
+}
+
+pub fn take_blamed_party() -> u16 {
+    LAST_BLAMED_ID.with(|c| {
+        let v = c.get();
+        c.set(0);
+        v
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn frost_last_blamed_party() -> u16 {
+    take_blamed_party()
 }
 
 impl From<crate::handle::Error> for lib_error {

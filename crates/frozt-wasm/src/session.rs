@@ -100,7 +100,7 @@ async fn frozt_sign_run(
     };
 
     let share = frost_rerandomized::sign(&signing_package, &nonces, &key_package, randomizer)
-        .map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+        .map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
     let share_bytes = share.serialize();
     ch.broadcast(share_bytes).await;
 
@@ -119,7 +119,7 @@ async fn frozt_sign_run(
         RandomizedParams::<J>::from_randomizer(pub_key_package.verifying_key(), randomizer);
     let signature = frost_rerandomized::aggregate(
         &signing_package, &shares, &pub_key_package, &randomized_params,
-    ).map_err(|_| lib_error::LIB_SIGNING_ERROR)?;
+    ).map_err(|e| frost_ceremony::blame::frost_err_to_blame(e, lib_error::LIB_SIGNING_ERROR))?;
 
     let sig_bytes = signature.serialize().map_err(ser_err)?;
     Ok(sig_bytes)
