@@ -305,30 +305,6 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         return Err(lib_error::LIB_UNKNOWN_ERROR);
     }
 
-    owned_outputs.sort_by(|a, b| b.commitment().amount.cmp(&a.commitment().amount));
-    let fee_estimate = 30_000_000u64;
-    let needed = amount + fee_estimate;
-    let mut selected: Vec<WalletOutput> = Vec::new();
-    let mut total_selected = 0u64;
-    for output in owned_outputs {
-        let amt = output.commitment().amount;
-        eprintln!("[fromt]   Output amount: {} piconero", amt);
-        selected.push(output);
-        total_selected += amt;
-        if total_selected >= needed {
-            break;
-        }
-    }
-    if total_selected < needed {
-        eprintln!("[fromt] Insufficient funds: have {}, need {}", total_selected, needed);
-        return Err(lib_error::LIB_UNKNOWN_ERROR);
-    }
-    eprintln!("[fromt] Selected {} inputs totalling {} piconero", selected.len(), total_selected);
-    let selected_offsets: Vec<[u8; 32]> = selected.iter()
-        .map(|o| <[u8; 32]>::from(o.key_offset()))
-        .collect();
-    let owned_outputs = selected;
-
     let recipient = monero_wallet::address::MoneroAddress::from_str(
         monero_wallet::address::Network::Mainnet,
         recipient_addr,
@@ -346,6 +322,34 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
             eprintln!("[fromt] fee_rate error: {:?}", e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
+
+    owned_outputs.sort_by(|a, b| b.commitment().amount.cmp(&a.commitment().amount));
+    let mut selected: Vec<WalletOutput> = Vec::new();
+    let mut total_selected = 0u64;
+    for output in owned_outputs {
+        let amt = output.commitment().amount;
+        eprintln!("[fromt]   Output amount: {} piconero", amt);
+        selected.push(output);
+        total_selected += amt;
+        let estimated_weight = 1500 + selected.len() * 2100;
+        let fee_estimate = fee_rate.calculate_fee_from_weight(estimated_weight);
+        if total_selected >= amount + fee_estimate {
+            break;
+        }
+    }
+    let final_weight_estimate = 1500 + selected.len() * 2100;
+    let final_fee_estimate = fee_rate.calculate_fee_from_weight(final_weight_estimate);
+    if total_selected < amount + final_fee_estimate {
+        eprintln!("[fromt] Insufficient funds: have {}, need {} (amount={}, fee_estimate={})",
+            total_selected, amount + final_fee_estimate, amount, final_fee_estimate);
+        return Err(lib_error::LIB_UNKNOWN_ERROR);
+    }
+    eprintln!("[fromt] Selected {} inputs totalling {} piconero (fee estimate: {})",
+        selected.len(), total_selected, final_fee_estimate);
+    let selected_offsets: Vec<[u8; 32]> = selected.iter()
+        .map(|o| <[u8; 32]>::from(o.key_offset()))
+        .collect();
+    let owned_outputs = selected;
 
     let mut outgoing_view = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(outgoing_view.as_mut());
@@ -683,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_clsag_with_converted_keys() {
+    fn test_spend_clsag_pipeline() {
         use std::collections::HashMap;
         use rand::rngs::OsRng;
         use rand::RngCore;
@@ -801,5 +805,137 @@ mod tests {
 
         assert!(result.is_ok(), "CLSAG signing with converted keys should succeed: {:?}", result.err());
         eprintln!("CLSAG with converted frost-ed25519 keyshares: PASSED");
+    }
+
+    #[test]
+    fn test_spend_preprocess_sign_complete_serialization() {
+        use std::collections::HashMap;
+        use rand::rngs::OsRng;
+        use rand::RngCore;
+        use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
+        use monero_wallet::ed25519::{Scalar as MScalar, CompressedPoint, Commitment};
+        use monero_clsag::{Decoys, ClsagContext, ClsagMultisig};
+        use flexible_transcript::{Transcript as _, RecommendedTranscript};
+        use modular_frost::sign::{
+            PreprocessMachine, SignMachine, SignatureMachine, AlgorithmMachine, Writable,
+        };
+
+        let results = run_dkg(3, 2);
+
+        let mut all_keys: HashMap<Participant, ThresholdKeys<dalek_ff_group::Ed25519>> =
+            HashMap::new();
+        for bundle_bytes in &results {
+            let bundle = KeyShareBundle::deserialize(bundle_bytes).unwrap();
+            let keys = convert_keyshare(&bundle).unwrap();
+            all_keys.insert(keys.params().i(), keys);
+        }
+
+        let group_key = all_keys[&Participant::new(1).unwrap()].group_key().0;
+
+        let amount = 1_000_000_000_000u64;
+        let ring_len = 16u8;
+        let ring_index = 3u8;
+        let commitment_mask: curve25519_dalek::Scalar = MScalar::random(&mut OsRng).into();
+
+        let mut ring = vec![];
+        for i in 0..ring_len {
+            let (dest, mask, amt) = if i == ring_index {
+                (group_key, commitment_mask, amount)
+            } else {
+                let d = &MScalar::random(&mut OsRng).into() * ED25519_BASEPOINT_TABLE;
+                let m: curve25519_dalek::Scalar = MScalar::random(&mut OsRng).into();
+                let a = OsRng.next_u64();
+                (d, m, a)
+            };
+            ring.push([
+                CompressedPoint::from(dest.compress().to_bytes())
+                    .decompress()
+                    .unwrap(),
+                Commitment::new(MScalar::from(mask), amt).commit(),
+            ]);
+        }
+
+        let pseudo_mask: curve25519_dalek::Scalar = MScalar::random(&mut OsRng).into();
+
+        let signers: Vec<Participant> = vec![
+            Participant::new(1).unwrap(),
+            Participant::new(2).unwrap(),
+        ];
+
+        let mut machines = HashMap::new();
+        for &pid in &signers {
+            let keys = all_keys[&pid].clone();
+            let (algorithm, mask_send) = ClsagMultisig::new(
+                RecommendedTranscript::new(b"fromt spend test"),
+                ClsagContext::new(
+                    Decoys::new(
+                        (1..=u64::from(ring_len)).collect(),
+                        ring_index,
+                        ring.clone(),
+                    )
+                    .unwrap(),
+                    Commitment::new(MScalar::from(commitment_mask), amount),
+                )
+                .unwrap(),
+            );
+            mask_send.send(pseudo_mask);
+            machines.insert(pid, AlgorithmMachine::new(algorithm, keys));
+        }
+
+        let mut msg = [0u8; 32];
+        OsRng.fill_bytes(&mut msg);
+
+        let mut sign_machines = HashMap::new();
+        let mut preprocess_bytes_map: HashMap<Participant, Vec<u8>> = HashMap::new();
+        for (pid, machine) in machines {
+            let (sm, pp) = machine.preprocess(&mut OsRng);
+            let mut pp_bytes = Vec::new();
+            pp.write(&mut pp_bytes).unwrap();
+            sign_machines.insert(pid, sm);
+            preprocess_bytes_map.insert(pid, pp_bytes);
+        }
+
+        let mut sig_machines = HashMap::new();
+        let mut share_bytes_map: HashMap<Participant, Vec<u8>> = HashMap::new();
+        for (pid, sm) in sign_machines {
+            let mut other_pps = HashMap::new();
+            for (&other_pid, pp_bytes) in &preprocess_bytes_map {
+                if other_pid != pid {
+                    let pp = sm.read_preprocess(&mut pp_bytes.as_slice()).unwrap();
+                    other_pps.insert(other_pid, pp);
+                }
+            }
+            let (sigm, share) = sm.sign(other_pps, &msg).unwrap();
+            let mut share_bytes = Vec::new();
+            share.write(&mut share_bytes).unwrap();
+            sig_machines.insert(pid, sigm);
+            share_bytes_map.insert(pid, share_bytes);
+        }
+
+        let first_pid = *sig_machines.keys().next().unwrap();
+        let sigm = sig_machines.remove(&first_pid).unwrap();
+        let mut other_shares = HashMap::new();
+        for (&pid, share_bytes) in &share_bytes_map {
+            if pid != first_pid {
+                let share = sigm.read_share(&mut share_bytes.as_slice()).unwrap();
+                other_shares.insert(pid, share);
+            }
+        }
+        let result = sigm.complete(other_shares);
+        assert!(result.is_ok(), "3-phase spend pipeline should succeed: {:?}", result.err());
+
+        let pp1_bytes = &preprocess_bytes_map[&Participant::new(1).unwrap()];
+        let pp2_bytes = &preprocess_bytes_map[&Participant::new(2).unwrap()];
+        assert!(!pp1_bytes.is_empty(), "preprocess bytes should not be empty");
+        assert!(!pp2_bytes.is_empty(), "preprocess bytes should not be empty");
+        assert_ne!(pp1_bytes, pp2_bytes, "different parties should produce different preprocesses");
+
+        let s1_bytes = &share_bytes_map[&Participant::new(1).unwrap()];
+        let s2_bytes = &share_bytes_map[&Participant::new(2).unwrap()];
+        assert!(!s1_bytes.is_empty(), "share bytes should not be empty");
+        assert!(!s2_bytes.is_empty(), "share bytes should not be empty");
+        assert_ne!(s1_bytes, s2_bytes, "different parties should produce different shares");
+
+        eprintln!("3-phase spend preprocess→sign→complete pipeline: PASSED");
     }
 }
