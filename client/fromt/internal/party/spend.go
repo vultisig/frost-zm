@@ -138,11 +138,43 @@ func (n *Node) runSpend(ctx context.Context) error {
 		log.Printf("[%s] Transaction broadcast! status=%s", n.Config.PartyID, result)
 
 		if len(n.spentOffsets) > 0 {
+			allVaultParties := orchestration.OtherParties(n.Config.Parties, n.Config.PartyID)
+			offsetMsg, marshalErr := json.Marshal(signableTxMessage{
+				Data: base64.StdEncoding.EncodeToString(n.spentOffsets),
+			})
+			if marshalErr != nil {
+				log.Printf("[%s] Warning: failed to marshal spent offsets: %v", n.Config.PartyID, marshalErr)
+			} else {
+				sendErr := n.Client.SendMessage(ctx, n.Config.SessionID, "spend-offsets", relay.Message{
+					SessionID: n.Config.SessionID,
+					From:      n.Config.PartyID,
+					To:        allVaultParties,
+					Body:      string(offsetMsg),
+				})
+				if sendErr != nil {
+					log.Printf("[%s] Warning: failed to broadcast spent offsets: %v", n.Config.PartyID, sendErr)
+				} else {
+					log.Printf("[%s] Broadcast spent offsets to %d vault participants", n.Config.PartyID, len(allVaultParties))
+				}
+			}
+
 			saveErr := n.Keystore.SaveSpentOffsets(n.Config.KeygenSessionID, n.spentOffsets)
 			if saveErr != nil {
 				log.Printf("[%s] Warning: failed to save spent offsets: %v", n.Config.PartyID, saveErr)
 			} else {
 				log.Printf("[%s] Saved %d spent output offsets", n.Config.PartyID, len(n.spentOffsets)/32)
+			}
+		}
+	} else {
+		offsets, rcvErr := receiveSpentOffsets(ctx, n.Client, n.Config.SessionID, n.Config.PartyID)
+		if rcvErr != nil {
+			log.Printf("[%s] Warning: failed to receive spent offsets: %v", n.Config.PartyID, rcvErr)
+		} else if len(offsets) > 0 {
+			saveErr := n.Keystore.SaveSpentOffsets(n.Config.KeygenSessionID, offsets)
+			if saveErr != nil {
+				log.Printf("[%s] Warning: failed to save spent offsets: %v", n.Config.PartyID, saveErr)
+			} else {
+				log.Printf("[%s] Received and saved %d spent output offsets", n.Config.PartyID, len(offsets)/32)
 			}
 		}
 	}
@@ -157,7 +189,15 @@ func (n *Node) runSpend(ctx context.Context) error {
 	return nil
 }
 
+func receiveSpentOffsets(ctx context.Context, client *relay.RelayClient, sessionID, partyID string) ([]byte, error) {
+	return receiveBase64Message(ctx, client, sessionID, partyID, "spend-offsets")
+}
+
 func receiveSignableTx(ctx context.Context, client *relay.RelayClient, sessionID, partyID string) ([]byte, error) {
+	return receiveBase64Message(ctx, client, sessionID, partyID, "spend-signable-tx")
+}
+
+func receiveBase64Message(ctx context.Context, client *relay.RelayClient, sessionID, partyID, messageID string) ([]byte, error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -165,7 +205,7 @@ func receiveSignableTx(ctx context.Context, client *relay.RelayClient, sessionID
 		default:
 		}
 
-		msgs, err := client.GetMessages(ctx, sessionID, partyID, "spend-signable-tx")
+		msgs, err := client.GetMessages(ctx, sessionID, partyID, messageID)
 		if err != nil {
 			return nil, err
 		}
@@ -173,16 +213,16 @@ func receiveSignableTx(ctx context.Context, client *relay.RelayClient, sessionID
 		for _, m := range msgs {
 			body, decErr := client.DecryptAndVerify(m)
 			if decErr != nil {
-				return nil, fmt.Errorf("decrypt signable tx: %w", decErr)
+				return nil, fmt.Errorf("decrypt %s: %w", messageID, decErr)
 			}
-			var stxMsg signableTxMessage
-			err = json.Unmarshal([]byte(body), &stxMsg)
+			var msg signableTxMessage
+			err = json.Unmarshal([]byte(body), &msg)
 			if err != nil {
-				return nil, fmt.Errorf("unmarshal signable tx: %w", err)
+				return nil, fmt.Errorf("unmarshal %s: %w", messageID, err)
 			}
-			decoded, err := base64.StdEncoding.DecodeString(stxMsg.Data)
+			decoded, err := base64.StdEncoding.DecodeString(msg.Data)
 			if err != nil {
-				return nil, fmt.Errorf("decode signable tx base64: %w", err)
+				return nil, fmt.Errorf("decode %s base64: %w", messageID, err)
 			}
 			return decoded, nil
 		}
