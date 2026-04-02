@@ -1079,6 +1079,186 @@ func TestKeyImportSetupRoundtrip(t *testing.T) {
 	t.Log("roundtrip OK")
 }
 
+func TestSpendPipeline(t *testing.T) {
+	n := uint16(3)
+	threshold := uint16(2)
+
+	t.Log("=== DKG ===")
+	keyShares, _ := runDKG(t, n, threshold)
+
+	t.Log("=== Create synthetic SignableTx ===")
+	signableTx, err := TestCreateSignableTx(keyShares[0])
+	if err != nil {
+		t.Fatalf("TestCreateSignableTx: %v", err)
+	}
+	t.Logf("signable tx: %d bytes", len(signableTx))
+
+	signerIndices := []int{0, 1}
+
+	t.Log("=== SpendPreprocess ===")
+	type preprocessState struct {
+		idx    int
+		id     uint16
+		idB    []byte
+		handle *SpendSignHandle
+		pp     []byte
+	}
+
+	signers := make([]preprocessState, len(signerIndices))
+	for i, idx := range signerIndices {
+		id := uint16(idx + 1)
+		handle, pp, ppErr := SpendPreprocess(keyShares[idx], signableTx)
+		if ppErr != nil {
+			t.Fatalf("SpendPreprocess signer %d: %v", id, ppErr)
+		}
+		signers[i] = preprocessState{
+			idx:    idx,
+			id:     id,
+			idB:    encodeID(t, id),
+			handle: handle,
+			pp:     pp,
+		}
+		t.Logf("signer %d preprocess: %d bytes", id, len(pp))
+	}
+
+	t.Log("=== SpendSign ===")
+	type signState struct {
+		idx    int
+		id     uint16
+		idB    []byte
+		handle *SpendSigHandle
+		share  []byte
+	}
+
+	signResults := make([]signState, len(signerIndices))
+	for i, s := range signers {
+		var ppEntries []MapEntry
+		for _, other := range signers {
+			if other.id == s.id {
+				continue
+			}
+			ppEntries = append(ppEntries, MapEntry{
+				ID:    other.idB,
+				Value: other.pp,
+			})
+		}
+
+		sigHandle, share, signErr := SpendSign(s.handle, EncodeMap(ppEntries))
+		if signErr != nil {
+			t.Fatalf("SpendSign signer %d: %v", s.id, signErr)
+		}
+		signResults[i] = signState{
+			idx:    s.idx,
+			id:     s.id,
+			idB:    s.idB,
+			handle: sigHandle,
+			share:  share,
+		}
+		t.Logf("signer %d share: %d bytes", s.id, len(share))
+	}
+
+	t.Log("=== SpendComplete ===")
+	var shareEntries []MapEntry
+	for _, sr := range signResults {
+		if sr.id == signResults[0].id {
+			continue
+		}
+		shareEntries = append(shareEntries, MapEntry{
+			ID:    sr.idB,
+			Value: sr.share,
+		})
+	}
+
+	rawTx, err := SpendComplete(signResults[0].handle, EncodeMap(shareEntries))
+	if err != nil {
+		t.Fatalf("SpendComplete: %v", err)
+	}
+	t.Logf("raw signed tx: %d bytes", len(rawTx))
+
+	if len(rawTx) == 0 {
+		t.Fatal("raw tx is empty")
+	}
+
+	for _, sr := range signResults[1:] {
+		sr.handle.Close()
+	}
+
+	t.Log("=== Spend pipeline passed ===")
+}
+
+func TestSpendPipelineSignerCombinations(t *testing.T) {
+	n := uint16(3)
+	threshold := uint16(2)
+
+	t.Log("=== DKG ===")
+	keyShares, _ := runDKG(t, n, threshold)
+
+	signableTx, err := TestCreateSignableTx(keyShares[0])
+	if err != nil {
+		t.Fatalf("TestCreateSignableTx: %v", err)
+	}
+
+	combinations := [][]int{{0, 1}, {0, 2}, {1, 2}}
+	for _, combo := range combinations {
+		t.Logf("=== Signing with parties %v ===", combo)
+
+		handles := make([]*SpendSignHandle, len(combo))
+		preprocesses := make([][]byte, len(combo))
+		ids := make([][]byte, len(combo))
+
+		for i, idx := range combo {
+			id := uint16(idx + 1)
+			h, pp, ppErr := SpendPreprocess(keyShares[idx], signableTx)
+			if ppErr != nil {
+				t.Fatalf("SpendPreprocess signer %d: %v", id, ppErr)
+			}
+			handles[i] = h
+			preprocesses[i] = pp
+			ids[i] = encodeID(t, id)
+		}
+
+		sigHandles := make([]*SpendSigHandle, len(combo))
+		shares := make([][]byte, len(combo))
+		for i := range combo {
+			var ppEntries []MapEntry
+			for j := range combo {
+				if j == i {
+					continue
+				}
+				ppEntries = append(ppEntries, MapEntry{ID: ids[j], Value: preprocesses[j]})
+			}
+
+			sh, share, signErr := SpendSign(handles[i], EncodeMap(ppEntries))
+			if signErr != nil {
+				t.Fatalf("SpendSign signer %d: %v", combo[i]+1, signErr)
+			}
+			sigHandles[i] = sh
+			shares[i] = share
+		}
+
+		var shareEntries []MapEntry
+		for j := 1; j < len(combo); j++ {
+			shareEntries = append(shareEntries, MapEntry{ID: ids[j], Value: shares[j]})
+		}
+
+		rawTx, completeErr := SpendComplete(sigHandles[0], EncodeMap(shareEntries))
+		if completeErr != nil {
+			t.Fatalf("SpendComplete: %v", completeErr)
+		}
+		t.Logf("parties %v: raw tx %d bytes", combo, len(rawTx))
+
+		if len(rawTx) == 0 {
+			t.Fatalf("parties %v: raw tx is empty", combo)
+		}
+
+		for _, sh := range sigHandles[1:] {
+			sh.Close()
+		}
+	}
+
+	t.Log("=== All signer combinations passed ===")
+}
+
 func TestHandleClose(t *testing.T) {
 	secret, _, err := DkgPart1(1, 3, 2)
 	if err != nil {
