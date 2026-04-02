@@ -190,6 +190,10 @@ lib_error fromt_spend_complete(Handle handle,
                                 const go_slice *shares_map,
                                 tss_buffer *out_raw_tx);
 
+/* Test Helpers */
+lib_error fromt_test_create_signable_tx(const go_slice *key_share,
+                                         tss_buffer *out_signable_tx);
+
 /* Session-based DKG */
 lib_error fromt_dkg_setupmsg_new(uint16_t max_signers,
                                   uint16_t min_signers,

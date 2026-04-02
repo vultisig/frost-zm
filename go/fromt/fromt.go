@@ -584,6 +584,18 @@ func SpendComplete(handle *SpendSigHandle, sharesMap []byte) ([]byte, error) {
 	return copyBuffer(&rawTx), nil
 }
 
+func TestCreateSignableTx(keyShare []byte) ([]byte, error) {
+	ks, p := cGoSlice(keyShare)
+	defer p.Unpin()
+	var signableTx C.tss_buffer
+	rc := C.fromt_test_create_signable_tx(&ks, &signableTx)
+	err := toError(int(rc))
+	if err != nil {
+		return nil, err
+	}
+	return copyBuffer(&signableTx), nil
+}
+
 func DecodeIdentifier(idBytes []byte) (uint16, error) {
 	s, p := cGoSlice(idBytes)
 	defer p.Unpin()
