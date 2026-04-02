@@ -1,6 +1,6 @@
 # frosty-lib
 
-Threshold signing for Zcash Sapling and Monero in a single workspace. Two FROST-based libraries — **frozt** (Zcash) and **fromt** (Monero) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
+Threshold signing for Zcash Sapling, Monero, and Bitcoin Taproot in a single workspace. Three FROST-based libraries — **frozt** (Zcash), **fromt** (Monero), and **frobt** (Bitcoin) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
 
 No single party ever holds a full private key. T-of-N parties run distributed key generation, threshold signing, resharing, and key import ceremonies.
 
@@ -11,12 +11,16 @@ crates/
   frost-ffi/           Shared FFI infrastructure (handle table, buffers, codec, errors)
   frost-ceremony/      Generic FROST ceremonies over any Ciphersuite (DKG, sign, reshare, key import)
   frost-session/       Session-based ceremony driver (setup, message routing, state machine)
+  frosty/              Shared ceremony base — generic DKG/sign/reshare/key-import/CKD + FFI macros
   frozt-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
   frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
   fromt-lib/           Monero — Ed25519 signing, view keys, CKD, key image ceremony, subaddresses
   fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
+  frobt/               Bitcoin Taproot — secp256k1 signing, Taproot addresses, sighash, witness
   frozt-wasm/          Zcash WASM bindings (wasm-bindgen)
   fromt-wasm/          Monero WASM bindings (wasm-bindgen)
+  frobt-wasm/          Bitcoin WASM bindings (wasm-bindgen)
+  test-vectors/        Deterministic test vector generator for all chains
 
 go/
   frostgo/             Shared Go codec and error handling
@@ -24,12 +28,16 @@ go/
   frozt-sdk/           Zcash Go SDK bindings (CGo) — scanner
   fromt/               Monero Go bindings (CGo)
   fromt-sdk/           Monero Go SDK bindings (CGo) — spend FFI
+  frobt/               Bitcoin Go bindings (CGo) — Taproot signing
 
 packages/
   frozt-sdk-ts/        Zcash TypeScript SDK — wallet, ceremony, scanner, lightwalletd client
   fromt-sdk-ts/        Monero TypeScript SDK
+  frobt-sdk-ts/        Bitcoin TypeScript SDK — wallet, ceremony, Taproot signing
   frozt-wasm/          Zcash WASM build output (wasm-pack pkg)
   fromt-wasm/          Monero WASM build output (wasm-pack pkg)
+
+test-data/             Generated test vectors (JSON) for cross-chain validation
 
 client/
   shared/              Shared relay, session runner, blame protocol, vault format, config, keystore base
@@ -40,7 +48,13 @@ client/
 
 ### Shared Crates
 
-**frost-ffi** — C FFI infrastructure used by both chain libraries:
+**frosty** — Shared ceremony base parameterized by `C: Ciphersuite`:
+- Generic `KeyShareBundle<C, M>` with pluggable per-chain metadata (`BundleMetadata` trait)
+- Generic DKG, signing, resharing, key import, CKD ceremonies (delegates to `frost-ceremony`)
+- `ffi_macros` module generating per-chain C FFI exports via `paste!` macros — each chain crate calls the macros with its ciphersuite to produce the full `frobt_dkg_*`, `frobt_sign_*`, etc. C API
+- Generic identifier encoding/decoding
+
+**frost-ffi** — C FFI infrastructure used by all chain libraries:
 - Global handle table for opaque secret state across the FFI boundary
 - `go_slice` / `tss_buffer` FFI buffer types
 - Binary map codec (`[count:u32 LE] then N × {key_len, key, val_len, val}`)
@@ -252,6 +266,69 @@ Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay cli
 
 ---
 
+## frobt — Bitcoin Taproot
+
+Threshold signing on secp256k1 (`Secp256K1Sha256`) with Taproot key-path spending (BIP 340/341). Produces valid Schnorr signatures for P2TR outputs.
+
+### Curve & Ciphersuite
+
+secp256k1 with SHA-256 — the curve used by Bitcoin. Signing uses `frost-secp256k1` with a Taproot tweak applied to the group key for BIP 341 key-path spends.
+
+### Protocols
+
+- **DKG** — 3-round FROST key generation via `frosty` base. Each party gets a `KeyShareBundle` with signing share, group public key, and chain code.
+- **Signing** — 4-step threshold Schnorr signing. Supports both regular signing (raw message hash) and Taproot signing (with optional merkle root tweak).
+- **Resharing** — Change threshold preserving the group key. Uses the session-based API.
+- **Key Import** — Import existing Bitcoin private keys (BIP39 seed → BIP 32 derivation) into the threshold scheme.
+- **CKD** — Child key derivation by `(account, index)` for BIP 32-style hierarchical key management.
+
+### Taproot Key Tweaking
+
+For Taproot key-path spends, the group public key is tweaked per BIP 341:
+
+```
+tweak = tagged_hash("TapTweak", x_only_pubkey || merkle_root)
+tweaked_key = pubkey + tweak * G
+```
+
+The tweak is applied to both the signing shares and the verification key so the threshold signature is valid against the tweaked output key. If no script tree exists, the merkle root is omitted and the tweak is computed from the public key alone.
+
+### Address Derivation
+
+Taproot (P2TR) addresses from the x-only tweaked public key:
+
+```
+witness_program = x_only_pubkey (32 bytes)
+address = bech32m("bc", 1, witness_program)
+```
+
+Child addresses use CKD to derive child public keys, then apply the Taproot tweak.
+
+### Upstream Sources
+
+| Component | Source | What it does for us |
+|-----------|--------|---------------------|
+| FROST DKG & signing | [`frost-core`](https://crates.io/crates/frost-core) v2 | Standard FROST distributed key generation and threshold signing |
+| secp256k1 ciphersuite | [`frost-secp256k1`](https://crates.io/crates/frost-secp256k1) v2.2 | `Secp256K1Sha256` ciphersuite definition for FROST |
+| secp256k1 arithmetic | [`k256`](https://crates.io/crates/k256) v0.13 | Scalar field ops, point multiplication, affine coordinate extraction |
+| Bitcoin primitives | [`bitcoin`](https://crates.io/crates/bitcoin) v0.32 | Address encoding (bech32m), script construction, witness building |
+| SHA-256 | [`sha2`](https://crates.io/crates/sha2) v0.10 | Tagged hashes for BIP 340/341 (TapTweak, TapSighash) |
+| HMAC | [`hmac`](https://crates.io/crates/hmac) v0.12 | BIP 32 child key derivation |
+
+### What we implement ourselves
+
+**Taproot key tweaking** (`crates/frobt/src/taproot.rs`) — Applies BIP 341 tagged-hash tweaks to FROST key packages. Adjusts both the signing share and all verification shares so the group can produce signatures valid against the tweaked Taproot output key. Uses upstream `k256` for scalar/point arithmetic and `sha2` for tagged hashes.
+
+**Sighash computation** (`crates/frobt/src/bitcoin/sighash.rs`) — Computes BIP 341 Taproot sighashes from transaction components (prevouts, amounts, sequences, outputs). Follows the exact serialization specified by the Bitcoin protocol.
+
+**Witness construction** (`crates/frobt/src/bitcoin/witness.rs`) — Builds Taproot witness stacks from threshold Schnorr signatures for key-path spends.
+
+**Address derivation** (`crates/frobt/src/bitcoin/address.rs`) — Derives P2TR bech32m addresses from the x-only tweaked group public key. Child address derivation via CKD path tweaking.
+
+Everything else (DKG, signing rounds, resharing, key import, CKD, FFI, session management) is provided by the `frosty` base crate via FFI macros.
+
+---
+
 ## Blame Protocol
 
 When a ceremony fails — a party sends invalid data, provides a bad proof of knowledge, or simply disappears — honest parties need to agree on who caused the failure before they can retry without the bad actor.
@@ -345,22 +422,25 @@ Protobuf vault format helpers — `FroztChainKeyEntry`, `FromtChainKeyEntry`, `F
 ## Build
 
 ```bash
-make build-rust          # Both Rust libraries (release)
+make build-rust          # All Rust libraries (release)
 make build-frozt         # Zcash only
 make build-fromt         # Monero only
+make build-frobt         # Bitcoin only
 
-make build-go            # Both Go bindings (builds Rust, copies libs)
+make build-go            # All Go bindings (builds Rust, copies libs)
 make build-go-frozt      # Zcash Go only
 make build-go-fromt      # Monero Go only
+make build-go-frobt      # Bitcoin Go only
 ```
 
 ### WASM
 
-Both WASM crates are pure crypto (no network deps) and build with standard wasm-pack:
+All WASM crates are pure crypto (no network deps) and build with standard wasm-pack:
 
 ```bash
 wasm-pack build crates/frozt-wasm --target web --out-dir ../../pkg/frozt
 wasm-pack build crates/fromt-wasm --target web --out-dir ../../pkg/fromt
+wasm-pack build crates/frobt-wasm --target web --out-dir ../../pkg/frobt
 ```
 
 ### TypeScript SDK
@@ -383,9 +463,12 @@ make build-fromt-linux-arm64
 ## Test
 
 ```bash
-make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, fromt-lib, wasm)
+make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, fromt-lib, frobt, wasm)
 make test-go             # All Go tests
 make test                # Both
+
+# Generate/regenerate deterministic test vectors
+cargo run -p test-vectors
 
 # Docker-based integration test
 docker build -f Dockerfile.test .
