@@ -13,6 +13,7 @@ members = [
     "crates/fromt-wasm",
     "crates/frobt",
     "crates/frobt-wasm",
+    "crates/test-vectors",
 ]
 
 [patch.crates-io]
