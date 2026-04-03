@@ -203,6 +203,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
     birthday: u64,
     excluded_key_offsets: &[[u8; 32]],
     spend_key: Option<&[u8; 32]>,
+    tx_extra_data: &[Vec<u8>],
 ) -> Result<(SignableTransaction, Vec<[u8; 32]>), lib_error> {
     let view_pair = view_pair_from_bundle(bundle)?;
 
@@ -382,7 +383,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
         inputs_with_decoys,
         vec![(recipient, amount)],
         change,
-        vec![],
+        tx_extra_data.to_vec(),
         fee_rate,
     )
     .map_err(|e| {

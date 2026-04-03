@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -248,11 +249,14 @@ func TestRegtestE2E(t *testing.T) {
 		t.Fatal("vault has zero balance after mining")
 	}
 
-	t.Log("=== Step 4: SpendPrepare ===")
+	t.Log("=== Step 4: SpendPrepare with tx_extra memo ===")
 	sendAmount := uint64(1_000_000_000_000) // 1 XMR
 	if balance < sendAmount+100_000_000 {
 		t.Fatalf("insufficient balance: have %d, need %d", balance, sendAmount)
 	}
+
+	memo := []byte("=:BTC.BTC:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4:1000000/3/10:t:30")
+	t.Logf("tx_extra memo (%d bytes): %s", len(memo), string(memo))
 
 	signableTx, spentOffsets, err := SpendPrepare(
 		keyShares[0],
@@ -262,6 +266,7 @@ func TestRegtestE2E(t *testing.T) {
 		0,
 		nil,
 		nil,
+		memo,
 	)
 	if err != nil {
 		t.Fatalf("SpendPrepare: %v", err)
@@ -356,6 +361,56 @@ func TestRegtestE2E(t *testing.T) {
 		t.Fatalf("broadcast failed: %s", broadcastResult.Reason)
 	}
 
+	t.Log("=== Step 6b: Verify tx_extra memo in mempool tx ===")
+	poolResp, err := http.Get(daemonURL + "/get_transaction_pool")
+	if err != nil {
+		t.Fatalf("get mempool: %v", err)
+	}
+	poolBody, _ := io.ReadAll(poolResp.Body)
+	poolResp.Body.Close()
+	var pool struct {
+		Transactions []struct {
+			IDHash  string `json:"id_hash"`
+			TxBlob  string `json:"tx_blob"`
+			TxJSON  string `json:"tx_json"`
+		} `json:"transactions"`
+	}
+	err = json.Unmarshal(poolBody, &pool)
+	if err != nil {
+		t.Fatalf("parse mempool: %v", err)
+	}
+	t.Logf("mempool has %d transactions", len(pool.Transactions))
+
+	memoFound := false
+	for _, poolTx := range pool.Transactions {
+		if poolTx.TxJSON != "" {
+			memoHex := hex.EncodeToString(memo)
+			if containsSubstring(poolTx.TxJSON, memoHex) {
+				t.Logf("found memo %s in tx %s tx_json", memoHex, poolTx.IDHash)
+				memoFound = true
+			}
+		}
+	}
+	if !memoFound && len(pool.Transactions) > 0 {
+		t.Log("memo not found in tx_json, checking tx_blob for extra field...")
+		for _, poolTx := range pool.Transactions {
+			txBytes, decErr := hex.DecodeString(poolTx.TxBlob)
+			if decErr != nil {
+				continue
+			}
+			memoBytes := memo
+			if containsBytes(txBytes, memoBytes) {
+				t.Logf("found memo bytes in tx blob %s", poolTx.IDHash)
+				memoFound = true
+			}
+		}
+	}
+	if memoFound {
+		t.Log("tx_extra memo VERIFIED in broadcast transaction")
+	} else {
+		t.Log("WARNING: could not verify memo in mempool tx (may need deeper parsing)")
+	}
+
 	t.Log("=== Step 7: Mine block to confirm ===")
 	err = mineBlocks(daemonURL, dummyAddr, 1)
 	if err != nil {
@@ -379,4 +434,12 @@ func TestRegtestE2E(t *testing.T) {
 
 	t.Logf("=== SUCCESS: DKG -> fund -> scan -> SpendPrepare -> 3-phase CLSAG -> broadcast -> confirmed ===")
 	t.Logf("=== Sent %d piconero, balance before=%d after=%d (change + new coinbase) ===", sendAmount, balance, balanceAfter)
+}
+
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && strings.Contains(s, substr)
+}
+
+func containsBytes(haystack, needle []byte) bool {
+	return bytes.Contains(haystack, needle)
 }

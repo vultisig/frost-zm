@@ -139,7 +139,7 @@ func OutputsForKeyImage(outputsData []byte) ([]byte, error) {
 	return buf, nil
 }
 
-func SpendPrepare(keyShare []byte, daemonURL, recipient string, amount, birthday uint64, excludedOffsets, spendKey []byte) (signableTx []byte, spentOffsets []byte, err error) {
+func SpendPrepare(keyShare []byte, daemonURL, recipient string, amount, birthday uint64, excludedOffsets, spendKey, txExtra []byte) (signableTx []byte, spentOffsets []byte, err error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()
 
@@ -159,12 +159,17 @@ func SpendPrepare(keyShare []byte, daemonURL, recipient string, amount, birthday
 		skSlice = cGoSlice(spendKey, pinner)
 	}
 
+	var extraSlice *C.go_slice
+	if len(txExtra) > 0 {
+		extraSlice = cGoSlice(txExtra, pinner)
+	}
+
 	var outTx C.tss_buffer
 	defer C.tss_buffer_free(&outTx)
 	var outOffsets C.tss_buffer
 	defer C.tss_buffer_free(&outOffsets)
 
-	res := C.fromt_spend_prepare(ksSlice, urlSlice, rcptSlice, C.uint64_t(amount), C.uint64_t(birthday), exclSlice, skSlice, &outTx, &outOffsets)
+	res := C.fromt_spend_prepare(ksSlice, urlSlice, rcptSlice, C.uint64_t(amount), C.uint64_t(birthday), exclSlice, skSlice, extraSlice, &outTx, &outOffsets)
 	if res != 0 {
 		return nil, nil, mapLibError(int(res))
 	}

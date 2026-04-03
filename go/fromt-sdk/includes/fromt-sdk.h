@@ -65,6 +65,7 @@ lib_error fromt_spend_prepare(const go_slice *key_share,
                                uint64_t amount, uint64_t birthday,
                                const go_slice *excluded_offsets,
                                const go_slice *spend_key,
+                               const go_slice *tx_extra,
                                tss_buffer *out_signable_tx,
                                tss_buffer *out_spent_offsets);
 

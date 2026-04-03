@@ -118,6 +118,7 @@ pub extern "C" fn fromt_spend_prepare(
     birthday: u64,
     excluded_offsets: Option<&go_slice>,
     spend_key: Option<&go_slice>,
+    tx_extra: Option<&go_slice>,
     out_signable_tx: Option<&mut tss_buffer>,
     out_spent_offsets: Option<&mut tss_buffer>,
 ) -> lib_error {
@@ -166,7 +167,19 @@ pub extern "C" fn fromt_spend_prepare(
             });
             let sk_ref = sk_opt.as_ref();
 
-            spend::prepare_spend(&rpc, url, &bundle, addr, amount, birthday, &excluded, sk_ref).await
+            let extra_data: Vec<Vec<u8>> = match tx_extra {
+                Some(ex) => {
+                    let data = ex.as_slice();
+                    if data.is_empty() {
+                        vec![]
+                    } else {
+                        vec![data.to_vec()]
+                    }
+                }
+                None => vec![],
+            };
+
+            spend::prepare_spend(&rpc, url, &bundle, addr, amount, birthday, &excluded, sk_ref, &extra_data).await
         })?;
 
         let input_offsets: Vec<u8> = selected_offsets.iter()
