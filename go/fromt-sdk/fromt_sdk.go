@@ -92,6 +92,26 @@ func ScanOutputs(keyShare []byte, daemonURL string, birthday uint64) ([]byte, er
 	return copyBuffer(&outData), nil
 }
 
+func ScanRange(keyShare []byte, daemonURL string, fromHeight, toHeight uint64) ([]byte, error) {
+	pinner := new(runtime.Pinner)
+	defer pinner.Unpin()
+
+	ksSlice := cGoSlice(keyShare, pinner)
+	urlBytes := []byte(daemonURL)
+	urlSlice := cGoSlice(urlBytes, pinner)
+
+	var outData C.tss_buffer
+	defer C.tss_buffer_free(&outData)
+
+	res := C.fromt_scan_range(ksSlice, urlSlice, C.uint64_t(fromHeight), C.uint64_t(toHeight), &outData)
+	err := mapLibError(int(res))
+	if err != nil {
+		return nil, err
+	}
+
+	return copyBuffer(&outData), nil
+}
+
 func FilterSpentOutputs(outputsData, spentFlags []byte) (uint64, uint32, error) {
 	pinner := new(runtime.Pinner)
 	defer pinner.Unpin()

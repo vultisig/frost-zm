@@ -484,6 +484,74 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
 }
 
 #[cfg(feature = "rpc")]
+pub async fn scan_range<R: ProvidesBlockchain + ProvidesTransactions + ProvidesOutputs + ExpandToScannableBlock + Sync>(
+    rpc: &R,
+    view_pair: &ViewPair,
+    from_height: u64,
+    to_height: u64,
+) -> Result<Vec<u8>, lib_error> {
+    let mut scanner = Scanner::new(view_pair.clone());
+
+    let start = from_height as usize;
+    let end = to_height as usize;
+
+    let mut owned_outputs: Vec<WalletOutput> = Vec::new();
+
+    eprintln!("[fromt] Scanning range {} to {} ({} blocks)", start, end, end - start + 1);
+
+    for height in start..=end {
+        let block = rpc
+            .block_by_number(height)
+            .await
+            .map_err(|e| {
+                eprintln!("[fromt] block_by_number({}) error: {:?}", height, e);
+                lib_error::LIB_UNKNOWN_ERROR
+            })?;
+
+        let scannable = rpc
+            .expand_to_scannable_block(block)
+            .await
+            .map_err(|e| {
+                eprintln!("[fromt] expand_to_scannable_block({}) error: {:?}", height, e);
+                lib_error::LIB_UNKNOWN_ERROR
+            })?;
+
+        let scanned = scanner.scan(scannable).map_err(|e| {
+            eprintln!("[fromt] scan block {} error: {:?}", height, e);
+            lib_error::LIB_UNKNOWN_ERROR
+        })?;
+        let unlocked = scanned.not_additionally_locked();
+        for output in unlocked {
+            eprintln!(
+                "[fromt] Found output at height {}: {} piconero",
+                height,
+                output.commitment().amount,
+            );
+            owned_outputs.push(output);
+        }
+    }
+
+    eprintln!("[fromt] Range scan complete: {} outputs found", owned_outputs.len());
+    encode_outputs(&owned_outputs)
+}
+
+#[cfg(feature = "rpc")]
+fn encode_outputs(outputs: &[WalletOutput]) -> Result<Vec<u8>, lib_error> {
+    let count = outputs.len() as u32;
+    let mut buf = Vec::with_capacity(4 + outputs.len() * 72);
+    buf.extend_from_slice(&count.to_le_bytes());
+    for output in outputs {
+        let output_key = output.key().compress().to_bytes();
+        let key_offset: [u8; 32] = <[u8; 32]>::from(output.key_offset());
+        let amount = output.commitment().amount;
+        buf.extend_from_slice(&output_key);
+        buf.extend_from_slice(&key_offset);
+        buf.extend_from_slice(&amount.to_le_bytes());
+    }
+    Ok(buf)
+}
+
+#[cfg(feature = "rpc")]
 pub async fn scan_outputs<R: ProvidesBlockchain + ProvidesTransactions + ProvidesOutputs + ExpandToScannableBlock + Sync>(
     rpc: &R,
     view_pair: &ViewPair,
@@ -519,19 +587,7 @@ pub async fn scan_outputs<R: ProvidesBlockchain + ProvidesTransactions + Provide
         }
     }
 
-    let count = owned_outputs.len() as u32;
-    let mut buf = Vec::with_capacity(4 + owned_outputs.len() * 72);
-    buf.extend_from_slice(&count.to_le_bytes());
-    for output in &owned_outputs {
-        let output_key = output.key().compress().to_bytes();
-        let key_offset: [u8; 32] = <[u8; 32]>::from(output.key_offset());
-        let amount = output.commitment().amount;
-        buf.extend_from_slice(&output_key);
-        buf.extend_from_slice(&key_offset);
-        buf.extend_from_slice(&amount.to_le_bytes());
-    }
-
-    Ok(buf)
+    encode_outputs(&owned_outputs)
 }
 
 pub fn spend_preprocess(

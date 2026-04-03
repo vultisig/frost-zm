@@ -52,6 +52,13 @@ lib_error fromt_scan_outputs(const go_slice *key_share,
                               uint64_t birthday,
                               tss_buffer *out_data);
 
+/* Scan Range */
+lib_error fromt_scan_range(const go_slice *key_share,
+                            const go_slice *daemon_url,
+                            uint64_t from_height,
+                            uint64_t to_height,
+                            tss_buffer *out_data);
+
 /* Filter Spent Outputs */
 lib_error fromt_filter_spent_outputs(const go_slice *outputs_data,
                                       const go_slice *spent_flags,
