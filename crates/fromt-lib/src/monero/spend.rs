@@ -245,7 +245,7 @@ pub async fn prepare_spend<R: ProvidesBlockchain + ProvidesTransactions + Provid
             eprintln!("[fromt] scan block {} error: {:?}", height, e);
             lib_error::LIB_UNKNOWN_ERROR
         })?;
-        let unlocked = scanned.not_additionally_locked();
+        let unlocked = scanned.additional_timelock_satisfied_by(safe_height, 0);
         if !unlocked.is_empty() {
             eprintln!("[fromt] Found {} outputs at height {}", unlocked.len(), height);
         }
@@ -429,8 +429,11 @@ pub async fn scan_balance<R: ProvidesBlockchain + ProvidesTransactions + Provide
             .await
             .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
 
-        let scanned = scanner.scan(scannable).map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
-        let unlocked = scanned.not_additionally_locked();
+        let scanned = scanner.scan(scannable).map_err(|e| {
+            eprintln!("[fromt] scan error at height {}: {:?}", height, e);
+            lib_error::LIB_UNKNOWN_ERROR
+        })?;
+        let unlocked = scanned.additional_timelock_satisfied_by(end, 0);
         for output in unlocked {
             let amount = output.commitment().amount;
             eprintln!(
@@ -509,7 +512,7 @@ pub async fn scan_outputs<R: ProvidesBlockchain + ProvidesTransactions + Provide
             .map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
 
         let scanned = scanner.scan(scannable).map_err(|_| lib_error::LIB_UNKNOWN_ERROR)?;
-        let unlocked = scanned.not_additionally_locked();
+        let unlocked = scanned.additional_timelock_satisfied_by(end, 0);
         for output in unlocked {
             owned_outputs.push(output);
         }

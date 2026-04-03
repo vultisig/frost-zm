@@ -1,0 +1,7 @@
+services:
+  monerod:
+    image: sethsimmons/simple-monerod:latest
+    entrypoint: ["/usr/local/bin/monerod"]
+    command: ["--regtest", "--offline", "--fixed-difficulty=1", "--rpc-bind-ip=0.0.0.0", "--rpc-bind-port=18081", "--confirm-external-bind", "--no-zmq", "--non-interactive"]
+    ports:
+      - "18081:18081"
