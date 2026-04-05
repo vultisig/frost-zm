@@ -1,6 +1,6 @@
 # frosty-lib
 
-Threshold signing for Zcash Sapling and Monero in a single workspace. Two FROST-based libraries — **frozt** (Zcash) and **fromt** (Monero) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
+Threshold signing for Zcash Sapling and Monero in a single workspace. Two FROST-based libraries — **frozts** (Zcash) and **fromt** (Monero) — sharing generic ceremony infrastructure, FFI plumbing, and relay orchestration.
 
 No single party ever holds a full private key. T-of-N parties run distributed key generation, threshold signing, resharing, and key import ceremonies.
 
@@ -11,29 +11,29 @@ crates/
   frost-ffi/           Shared FFI infrastructure (handle table, buffers, codec, errors)
   frost-ceremony/      Generic FROST ceremonies over any Ciphersuite (DKG, sign, reshare, key import)
   frost-session/       Session-based ceremony driver (setup, message routing, state machine)
-  frozt-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
-  frozt-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
+  frozts-lib/           Zcash Sapling — signing, z-addresses, tx building, ceremony metadata
+  frozts-sdk/           Zcash SDK — native scanner (lightwalletd gRPC + zcash_client_backend)
   fromt-lib/           Monero — Ed25519 signing, view keys, CKD, key image ceremony, subaddresses
   fromt-sdk/           Monero SDK — native spend FFI (daemon RPC, scanning, decoy selection)
-  frozt-wasm/          Zcash WASM bindings (wasm-bindgen)
+  frozts-wasm/          Zcash WASM bindings (wasm-bindgen)
   fromt-wasm/          Monero WASM bindings (wasm-bindgen)
 
 go/
   frostgo/             Shared Go codec and error handling
-  frozt/               Zcash Go bindings (CGo) — core crypto
-  frozt-sdk/           Zcash Go SDK bindings (CGo) — scanner
+  frozts/               Zcash Go bindings (CGo) — core crypto
+  frozts-sdk/           Zcash Go SDK bindings (CGo) — scanner
   fromt/               Monero Go bindings (CGo)
   fromt-sdk/           Monero Go SDK bindings (CGo) — spend FFI
 
 packages/
-  frozt-sdk-ts/        Zcash TypeScript SDK — wallet, ceremony, scanner, lightwalletd client
+  frozts-sdk-ts/        Zcash TypeScript SDK — wallet, ceremony, scanner, lightwalletd client
   fromt-sdk-ts/        Monero TypeScript SDK
-  frozt-wasm/          Zcash WASM build output (wasm-pack pkg)
+  frozts-wasm/          Zcash WASM build output (wasm-pack pkg)
   fromt-wasm/          Monero WASM build output (wasm-pack pkg)
 
 client/
   shared/              Shared relay, session runner, blame protocol, vault format, config, keystore base
-  frozt/               Zcash client — Sapling spend, lightwalletd, Docker orchestration
+  frozts/               Zcash client — Sapling spend, lightwalletd, Docker orchestration
   fromt/               Monero client — daemon RPC, address derivation, Docker orchestration
   vult/                Combined vault tests — multi-chain key import, vault round-trip
 ```
@@ -56,7 +56,7 @@ client/
 
 ---
 
-## frozt — Zcash Sapling
+## frozts — Zcash Sapling
 
 Threshold signing on the RedJubjub curve (`JubjubBlake2b512`) with rerandomization for Zcash Sapling's unlinkability guarantees.
 
@@ -72,7 +72,7 @@ RedJubjub with Blake2b-512 — the curve used by Zcash Sapling for spend authori
 - **Key Import** — Import existing Zcash Sapling spending keys (BIP39 seed → ZIP 32 path `m/32'/133'/account'`) into the threshold scheme. Verified against expected verifying key.
 - **Sapling** — Z-address generation, note decryption, nullifier computation, Merkle tree witness management, and Sapling transaction building.
 - **Ceremony Metadata** — Coordinator bundles birthday + sapling extras into a versioned metadata blob, broadcast to all parties during DKG/import. Hash-verified for consistency.
-- **Scanner** (SDK) — Full wallet sync via `zcash_client_backend` + `zcash_client_memory` against lightwalletd. Native build in `frozt-sdk` (gRPC via tonic), TypeScript SDK in `packages/frozt-sdk-ts` (gRPC-web via Connect).
+- **Scanner** (SDK) — Full wallet sync via `zcash_client_backend` + `zcash_client_memory` against lightwalletd. Native build in `frozts-sdk` (gRPC via tonic), TypeScript SDK in `packages/frozts-sdk-ts` (gRPC-web via Connect).
 
 ### KeyShareBundle
 
@@ -82,7 +82,7 @@ Self-contained binary blob storing all per-party data:
 [version:1][birthday:8][extras_len:4][sapling_extras][kp_len:4][KeyPackage][pkp_len:4][PublicKeyPackage]
 ```
 
-Birthday records the block height at wallet creation — user-provided for seed imports, chain tip for seedless DKG. Used as the scan start height. Pack/unpack via `frozt_keyshare_bundle_*` FFI functions.
+Birthday records the block height at wallet creation — user-provided for seed imports, chain tip for seedless DKG. Used as the scan start height. Pack/unpack via `frozts_keyshare_bundle_*` FFI functions.
 
 ### Sapling Extras
 
@@ -104,7 +104,7 @@ Birthday records the block height at wallet creation — user-provided for seed 
 | Wallet sync (SDK) | [`zcash_client_backend`](https://github.com/ChainSafe/librustzcash-nu61) | Full chain scanning, sync engine, lightwalletd gRPC protocol |
 | In-memory wallet (SDK) | [`zcash_client_memory`](https://github.com/ChainSafe/librustzcash-nu61) | In-memory wallet database for scanning |
 | Unified keys (SDK) | [`zcash_keys`](https://github.com/ChainSafe/librustzcash-nu61) | `UnifiedFullViewingKey` construction from Sapling DFVK |
-| gRPC transport (SDK) | [`tonic`](https://crates.io/crates/tonic) v0.14 | Native gRPC client for lightwalletd (frozt-sdk) |
+| gRPC transport (SDK) | [`tonic`](https://crates.io/crates/tonic) v0.14 | Native gRPC client for lightwalletd (frozts-sdk) |
 
 The SDK scanner deps use the [ChainSafe librustzcash-nu61 fork](https://github.com/ChainSafe/librustzcash-nu61) for NU6.1 compatibility.
 
@@ -112,27 +112,27 @@ DKG delegates to `frost_core::keys::dkg::part1/2/3`. Signing delegates to `frost
 
 ### What we implement ourselves
 
-Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozt-lib/` (Zcash-specific):
+Three protocol extensions compose upstream primitives without introducing new cryptographic assumptions. All live in `frost-ceremony/` (generic) and `frozts-lib/` (Zcash-specific):
 
 **Resharing** (`frost-ceremony/src/reshare.rs`) — Changes the threshold scheme (e.g., 2-of-2 to 2-of-3) while preserving the group public key. The only custom math is Lagrange interpolation coefficients over the scalar field — textbook polynomial evaluation using upstream field arithmetic. The result feeds into standard `frost-core` DKG rounds 2 and 3 and is verified against the expected verifying key.
 
-**Key Import** (`frost-ceremony/src/key_import.rs`, `frozt-lib/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
+**Key Import** (`frost-ceremony/src/key_import.rs`, `frozts-lib/src/key_import.rs`) — Imports an existing Zcash spending key into the threshold scheme. The importing party sets their polynomial constant to `ask - (N-1)` while others use `1`, so shares sum to the original key. This is a single field subtraction on top of upstream ZIP 32 derivation and standard FROST DKG. The group public key is verified against the expected verifying key.
 
-**Sapling extras & z-address composition** (`frozt-lib/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
+**Sapling extras & z-address composition** (`frozts-lib/src/sapling.rs`) — Constructs a `DiversifiableFullViewingKey` by combining the FROST group public key with Sapling scalars (`nsk`, `ovk`, `dk`). For seed imports, extracted from upstream `ExtendedSpendingKey`. For seedless DKG, `nsk` via `jubjub::Fr::random()`, rest via `OsRng`. The z-address is produced by upstream `DiversifiableFullViewingKey::default_address()`.
 
-**Transaction building** (`frozt-lib/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
+**Transaction building** (`frozts-lib/src/tx.rs`) — Assembles Sapling v5 transactions from threshold-signed spend proofs and output proofs. Delegates proof generation to `sapling-crypto`'s Groth16 provers. The transaction serialization format follows the Zcash specification.
 
-**Ceremony metadata** (`frozt-lib/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
+**Ceremony metadata** (`frozts-lib/src/ceremony_metadata.rs`) — Versioned blob bundling birthday + sapling extras for broadcast during DKG/import. Coordinator creates metadata, all parties verify via Blake2b hash. Format: `[version:1][birthday:8][extras:96]`.
 
 Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay client) is non-cryptographic plumbing.
 
-### frozt-sdk — Native Scanner
+### frozts-sdk — Native Scanner
 
-`frozt-sdk` is a separate native crate (not WASM) that wraps `zcash_client_backend` for full wallet synchronization against a lightwalletd gRPC endpoint. Provides C FFI functions (`frozt_sdk_scan`, `frozt_sdk_scan_balance`) and Go bindings in `go/frozt-sdk/`.
+`frozts-sdk` is a separate native crate (not WASM) that wraps `zcash_client_backend` for full wallet synchronization against a lightwalletd gRPC endpoint. Provides C FFI functions (`frozts_sdk_scan`, `frozts_sdk_scan_balance`) and Go bindings in `go/frozts-sdk/`.
 
-### frozt-sdk-ts — TypeScript SDK
+### frozts-sdk-ts — TypeScript SDK
 
-`packages/frozt-sdk-ts` is a TypeScript package (`@vultisig/frozt-sdk`) for browser/Node.js integration:
+`packages/frozts-sdk-ts` is a TypeScript package (`@vultisig/frozts-sdk`) for browser/Node.js integration:
 
 - **`FroztWallet`** — High-level wallet: init from keyshare bundle, derive addresses, scan balance
 - **`ceremony`** — DKG, key import, signing, reshare orchestration with metadata broadcast
@@ -140,7 +140,7 @@ Everything else (FFI handle table, binary codec, Go/WASM/SDK bindings, relay cli
 - **`LightwalletClient`** — gRPC-web client for lightwalletd (Connect protocol)
 - **`types`** — `ScanResult`, `FoundNote`, `SaplingKeys`, `KeygenMetadata`, compact block types
 
-Uses `frozt-wasm` for crypto operations and `@connectrpc/connect-web` for gRPC-web transport.
+Uses `frozts-wasm` for crypto operations and `@connectrpc/connect-web` for gRPC-web transport.
 
 ---
 
@@ -234,9 +234,9 @@ DKG delegates to `frost_core::keys::dkg::part1/2/3`. FROST keyshare conversion t
 
 Six protocol extensions compose upstream primitives. All live in `frost-ceremony/` (generic) and `fromt-lib/` (Monero-specific):
 
-**Resharing** (`frost-ceremony/src/reshare.rs`) — Same generic reshare as frozt. Lagrange interpolation over the Ed25519 scalar field using upstream `curve25519-dalek` arithmetic. Result feeds into standard FROST DKG rounds.
+**Resharing** (`frost-ceremony/src/reshare.rs`) — Same generic reshare as frozts. Lagrange interpolation over the Ed25519 scalar field using upstream `curve25519-dalek` arithmetic. Result feeds into standard FROST DKG rounds.
 
-**Key Import** (`frost-ceremony/src/key_import.rs`, `fromt-lib/src/ceremony/key_import.rs`) — Splits an existing Monero spend key into threshold shares. Same `secret - (N-1)` polynomial trick as frozt. The Monero-specific part is deriving the view key as `Keccak256(spend_key)` and aggregating view key shares across parties (`fromt-lib/src/ceremony/key_import.rs:aggregate_import_view_key`).
+**Key Import** (`frost-ceremony/src/key_import.rs`, `fromt-lib/src/ceremony/key_import.rs`) — Splits an existing Monero spend key into threshold shares. Same `secret - (N-1)` polynomial trick as frozts. The Monero-specific part is deriving the view key as `Keccak256(spend_key)` and aggregating view key shares across parties (`fromt-lib/src/ceremony/key_import.rs:aggregate_import_view_key`).
 
 **View key aggregation** (`fromt-lib/src/ceremony/dkg.rs`, `fromt-lib/src/ceremony/reshare.rs`) — During DKG and reshare, each party generates a random 32-byte view key share. These are exchanged alongside FROST round packages and summed to produce the aggregate view key. This is simple scalar addition — no new cryptographic assumptions. The aggregate is stored in `KeyShareBundle.view_key`.
 
@@ -263,7 +263,7 @@ When a ceremony fails — a party sends invalid data, provides a bad proof of kn
 - `InvalidSecretShare` — bad secret share vs commitments (detected in `dkg::part3`)
 - `InvalidSignatureShare` — bad signature share (detected in `aggregate`)
 
-Every `map_err` on these frost-core calls now preserves the culprit's frost ID via `frost_ceremony::blame::frost_err_to_blame()`, which stores the blamed party in a thread-local and returns `LIB_BLAME`. The Go layer retrieves the ID via `frost_last_blamed_party()` (C FFI) / `frozt.LastBlamedParty()` / `fromt.LastBlamedParty()`.
+Every `map_err` on these frost-core calls now preserves the culprit's frost ID via `frost_ceremony::blame::frost_err_to_blame()`, which stores the blamed party in a thread-local and returns `LIB_BLAME`. The Go layer retrieves the ID via `frost_last_blamed_party()` (C FFI) / `frozts.LastBlamedParty()` / `fromt.LastBlamedParty()`.
 
 **Go layer** — after a ceremony fails, the orchestration calls `handleBlame()` which:
 1. Checks `LastBlamedParty()` — if non-zero, it's a crypto blame (frost-core identified the culprit)
@@ -301,7 +301,7 @@ Every `map_err` on these frost-core calls now preserves the culprit's frost ID v
 | `crates/frost-ffi/src/errors.rs` | `LIB_BLAME` error code, thread-local blamed party storage, `frost_last_blamed_party()` FFI |
 | `crates/frost-ceremony/src/blame.rs` | `identifier_to_u16()`, `frost_err_to_blame()` — culprit extraction from frost-core errors |
 | `client/shared/session/blame.go` | `BlameReport`, `BlameResult`, `ExchangeBlame()` — relay-based blame consensus |
-| `client/frozt/internal/orchestration/keygen.go` | `handleBlame()` — orchestration integration (frozt) |
+| `client/frozts/internal/orchestration/keygen.go` | `handleBlame()` — orchestration integration (frozts) |
 | `client/fromt/internal/orchestration/keygen.go` | `handleBlame()` — orchestration integration (fromt) |
 
 ---
@@ -346,11 +346,11 @@ Protobuf vault format helpers — `FroztChainKeyEntry`, `FromtChainKeyEntry`, `F
 
 ```bash
 make build-rust          # Both Rust libraries (release)
-make build-frozt         # Zcash only
+make build-frozts         # Zcash only
 make build-fromt         # Monero only
 
 make build-go            # Both Go bindings (builds Rust, copies libs)
-make build-go-frozt      # Zcash Go only
+make build-go-frozts      # Zcash Go only
 make build-go-fromt      # Monero Go only
 ```
 
@@ -359,14 +359,14 @@ make build-go-fromt      # Monero Go only
 Both WASM crates are pure crypto (no network deps) and build with standard wasm-pack:
 
 ```bash
-wasm-pack build crates/frozt-wasm --target web --out-dir ../../pkg/frozt
+wasm-pack build crates/frozts-wasm --target web --out-dir ../../pkg/frozts
 wasm-pack build crates/fromt-wasm --target web --out-dir ../../pkg/fromt
 ```
 
 ### TypeScript SDK
 
 ```bash
-cd packages/frozt-sdk-ts
+cd packages/frozts-sdk-ts
 npm install
 npm run build
 ```
@@ -374,8 +374,8 @@ npm run build
 Cross-compilation:
 
 ```bash
-make build-frozt-linux-amd64
-make build-frozt-linux-arm64
+make build-frozts-linux-amd64
+make build-frozts-linux-arm64
 make build-fromt-linux-amd64
 make build-fromt-linux-arm64
 ```
@@ -383,7 +383,7 @@ make build-fromt-linux-arm64
 ## Test
 
 ```bash
-make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozt-lib, fromt-lib, wasm)
+make test-rust           # All Rust tests (frost-ffi, frost-ceremony, frozts-lib, fromt-lib, wasm)
 make test-go             # All Go tests
 make test                # Both
 
@@ -393,7 +393,7 @@ docker build -f Dockerfile.test .
 
 ## Client: Docker Multi-Party Demos
 
-### Zcash (frozt)
+### Zcash (frozts)
 
 ```bash
 make docker-keygen SESSION=my-session
@@ -403,7 +403,7 @@ make docker-sign SESSION=my-session MESSAGE="hello zcash" SIGNERS="party-1,party
 Or directly:
 
 ```bash
-cd client/frozt
+cd client/frozts
 ./scripts/run-keygen.sh my-session
 ./scripts/run-sign.sh my-session "hello zcash" "party-1,party-2"
 ```

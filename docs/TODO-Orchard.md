@@ -2,50 +2,59 @@
 
 Orchard uses the Pallas curve (Pasta/Halo 2), not Jubjub. Separate FROST ciphersuite, keygen, keyshares, and signing required — cannot share the existing `JubjubBlake2b512` setup. Transactions can contain both Sapling and Orchard actions simultaneously.
 
-## Prerequisites
+## Crate naming
 
-- [ ] Verify `reddsa` crate has a RedPallas FROST ciphersuite (or implement one)
-- [ ] Add `orchard`, `halo2_proofs`, `pasta_curves` crate dependencies
-- [ ] Confirm `frost-core` works with Pallas curve parameterization
+- `frozts-*` — Sapling (RedJubjub / `JubjubBlake2b512`)
+- `frozto-*` — Orchard (RedPallas / `PallasBlake2b512`)
 
-## Reusable (curve-agnostic)
+## Extras layout (64 bytes)
 
-- Session protocol (`frost-ceremony` feed/takeMsg/result pattern)
-- Relay message exchange, encryption, party ID encoding
-- TypeScript SDK structure (ceremony.ts, scanner.ts, wallet.ts)
-- Bundle pack/unpack format (swap Jubjub fields for Pallas)
-- Go wrapper FFI pattern, WASM build pipeline
-- `incrementalmerkletree` crate (works with any node type)
+```
+[0..32]:   nk  (NullifierDerivingKey, pallas::Base)
+[32..64]:  rivk (CommitIvkRandomness, pallas::Scalar)
+```
 
-## Reusable with curve swap (Jubjub → Pallas)
+FVK = [ak(32) | nk(32) | rivk(32)] where ak comes from the FROST group verifying key.
 
-- Keygen/reshare/key-import sessions — same FROST protocol, different type parameter
-- Sign session — RedPallas instead of RedJubjub
-- Identifier encoding — identical across ciphersuites
+## Implemented
 
-## Must rewrite
+### Core library (frozto-lib) — 28 tests
+- [x] RedPallas FROST ciphersuite (`PallasBlake2b512`)
+- [x] Keygen/reshare/key-import sessions
+- [x] Sign session with RedPallas spend auth signatures + randomizer
+- [x] Key derivation — build FVK from FROST PKP + extras (nk, rivk)
+- [x] Extras generation — random nk + rivk; deterministic from seed via ZIP-32
+- [x] Key import with seed — derive ask via PRF, FROST constant term
+- [x] Address derivation — 43-byte Orchard raw address from FVK
+- [x] IVK derivation — 64-byte IncomingViewingKey
+- [x] Compact + full note decryption via PreparedIVK + CompactAction
+- [x] Nullifier computation from FVK + note plaintext
+- [x] Pallas-based incremental Merkle tree (MerkleHashOrchard, depth 32)
+- [x] Keyshare bundle with Orchard extras
+- [x] Ceremony metadata with blake2b personalization
+- [x] Session-based DKG, sign, reshare, key-import protocols
 
-- [ ] **Key derivation** — different ZIP-32 path, different viewing key structure (FVK, IVK, OVK, rivk)
-- [ ] **Extras generation** — different key material than Sapling (nsk, ovk, rivk)
-- [ ] **Note encryption/decryption** — different scheme (Orchard note plaintext format)
-- [ ] **Transaction builder** — Orchard actions ≠ Sapling spends/outputs; Halo 2 proofs ≠ Groth16
-- [ ] **Tree/witness** — Pallas-based nodes, shard tree structure
-- [ ] **Address handling** — Orchard receivers in unified addresses
-- [ ] **Scanner** — Orchard compact block decryption, different nullifier computation
+### WASM exports (frozto-wasm) — 17 tests
+- [x] wasm-bindgen exports for keygen, sign, reshare, key import
+- [x] Orchard key derivation, note decryption, nullifier computation
+- [x] Tree/witness operations with MerkleHashOrchard
+- [x] Session management
+- [x] Cross-verification
 
-## Implementation order
+### Scanner SDK (frozto-sdk)
+- [x] Orchard wallet scanning via lightwalletd (gRPC tonic client)
+- [x] UnifiedFullViewingKey construction from Orchard FVK
+- [x] FFI exports: frozto_scan, frozto_scan_balance
 
-1. RedPallas FROST ciphersuite (if not already in `reddsa`)
-2. Orchard keygen session (parallel to Sapling, new ciphersuite)
-3. Orchard key derivation + extras (FVK from FROST public key)
-4. Orchard note decryption + scanning
-5. Orchard action/bundle builder with Halo 2 proving
-6. Orchard sign session (RedPallas spend auth signatures)
-7. Combined Sapling+Orchard transaction serialization (replace `hash_empty_orchard()` stubs)
-8. WASM exports, TypeScript SDK, Go wrappers
+### Go wrappers (go/frozto, go/frozto-sdk)
+- [x] CGo FFI bindings for all frozto-lib functions
+- [x] C header files
+- [x] Platform-specific linker configurations (darwin, linux, windows)
+- [x] Session wrappers (DKG, sign, reshare, key import)
+- [x] Scanner wrapper (Scan, ScanBalance)
 
-## Current Orchard stubs
+## Remaining
 
-- `crates/frozt-lib/src/tx.rs` — `hash_empty_orchard()` produces empty digest
-- `crates/frozt-lib/src/shielding_tx.rs` — v5 sighash uses empty Orchard digest
-- These stubs get replaced in step 7
+- [ ] **Transaction builder** — Orchard actions with Halo 2 proofs (requires `orchard::builder`)
+- [ ] **Combined Sapling+Orchard tx** — replace `hash_empty_orchard()` stubs in frozts-lib
+- [ ] **TypeScript SDK** — packages/frozto-sdk-ts (TS wrapper around WASM module)

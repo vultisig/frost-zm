@@ -57,6 +57,9 @@ pub enum lib_error {
     #[error("Session not ready")]
     LIB_SESSION_NOT_READY,
 
+    #[error("Orchard error")]
+    LIB_ORCHARD_ERROR,
+
     #[error("Blame")]
     LIB_BLAME,
 }

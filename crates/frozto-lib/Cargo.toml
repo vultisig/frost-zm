@@ -1,0 +1,38 @@
+[package]
+name = "frozto-lib"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "froztolib"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frost-ffi = { path = "../frost-ffi" }
+frost-ceremony = { path = "../frost-ceremony" }
+frost-session = { path = "../frost-session" }
+reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552", features = ["frost"] }
+frost-rerandomized = "2.2"
+frost-core = { version = "2.2", features = ["internals"] }
+orchard = { version = "0.12", features = ["test-dependencies"] }
+pasta_curves = "0.5"
+blake2b_simd = "1"
+byteorder = "1"
+incrementalmerkletree = { version = "0.8", features = ["legacy-api"] }
+rand = "0.8"
+thiserror = "1"
+group = "0.13"
+hex = "0.4"
+zcash_address = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61" }
+zcash_note_encryption = "0.4"
+zcash_protocol = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61" }
+zip32 = "0.2"
+sha2 = "0.10"
+ripemd = "0.1"
+bs58 = { version = "0.5", features = ["check"] }
+bech32 = "0.11"
+sapling-crypto = { version = "0.6", default-features = false }
+zeroize = { version = "1", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

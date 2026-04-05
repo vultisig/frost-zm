@@ -1,6 +1,6 @@
 # Vault Integration Spec
 
-How frozt (Zcash) and fromt (Monero) key material is stored inside a Vultisig `.vult` vault backup.
+How frozts (Zcash) and fromt (Monero) key material is stored inside a Vultisig `.vult` vault backup.
 
 ## Vault-Level Fields
 
@@ -44,11 +44,11 @@ public_key: <same 32-byte hex verifying key>
 keyshare: <base64-encoded KeyShareBundle>
 ```
 
-The `public_key` in both entries is the **hex-encoded 32-byte frozt group verifying key** — consistent with how ECDSA and EdDSA public keys are stored (plain hex strings, not binary blobs).
+The `public_key` in both entries is the **hex-encoded 32-byte frozts group verifying key** — consistent with how ECDSA and EdDSA public keys are stored (plain hex strings, not binary blobs).
 
 ### KeyShareBundle Format
 
-Self-contained binary blob. All frozt per-party data in one place:
+Self-contained binary blob. All frozts per-party data in one place:
 
 ```
 [version: u8]           // 1
@@ -62,11 +62,11 @@ Self-contained binary blob. All frozt per-party data in one place:
 ```
 
 Access via FFI:
-- `frozt_keyshare_bundle_pack(kp, pkp, extras, birthday) → bundle`
-- `frozt_keyshare_bundle_birthday(bundle) → u64`
-- `frozt_keyshare_bundle_key_package(bundle) → bytes`
-- `frozt_keyshare_bundle_pub_key_package(bundle) → bytes`
-- `frozt_keyshare_bundle_sapling_extras(bundle) → bytes`
+- `frozts_keyshare_bundle_pack(kp, pkp, extras, birthday) → bundle`
+- `frozts_keyshare_bundle_birthday(bundle) → u64`
+- `frozts_keyshare_bundle_key_package(bundle) → bytes`
+- `frozts_keyshare_bundle_pub_key_package(bundle) → bytes`
+- `frozts_keyshare_bundle_sapling_extras(bundle) → bytes`
 
 ### What NOT to do
 
@@ -128,7 +128,7 @@ Current state in existing .vult files:
 
 Migration:
 1. Read the bundle from either "Zcash" or "ZcashShielded" key share
-2. Extract the 32-byte verifying key via `frozt_pubkeypackage_verifying_key(pkp)`
+2. Extract the 32-byte verifying key via `frozts_pubkeypackage_verifying_key(pkp)`
 3. Store as single "ZcashSapling" entry with hex verifying key
 4. Drop the "SaplingExtras" chain_public_keys entry (data is in the bundle)
 5. Drop the duplicate chain key entry

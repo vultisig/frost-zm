@@ -19,7 +19,7 @@ import (
 	keygenV1 "github.com/vultisig/commondata/go/vultisig/keygen/v1"
 
 	fromt "github.com/vultisig/frosty-lib/go/fromt"
-	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	frozts "github.com/vultisig/frosty-lib/go/frozts"
 
 	sharedconfig "github.com/vultisig/frosty-lib/client/shared/config"
 	sharedvault "github.com/vultisig/frosty-lib/client/shared/vault"
@@ -85,19 +85,19 @@ func moneroSeedFromMnemonic(t *testing.T, mnemonic string) []byte {
 	return scReduce32(key.Key)
 }
 
-type froztKeyImportResult struct {
+type froztsKeyImportResult struct {
 	keyPackages   [][]byte
 	pubKeyPackage []byte
 	vk            []byte
 	extras        []byte
 }
 
-func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIndex uint32) froztKeyImportResult {
+func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIndex uint32) froztsKeyImportResult {
 	t.Helper()
 
 	type party struct {
 		id     uint16
-		secret frozt.DkgSecretHandle
+		secret frozts.DkgSecretHandle
 		r1Pkg  []byte
 	}
 
@@ -110,9 +110,9 @@ func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIn
 		if id == 1 {
 			s = seed
 		}
-		secret, pkg, outVK, outExtras, err := frozt.KeyImportPart1(id, n, threshold, s, accountIndex)
+		secret, pkg, outVK, outExtras, err := frozts.KeyImportPart1(id, n, threshold, s, accountIndex)
 		if err != nil {
-			t.Fatalf("frozt KeyImportPart1 party %d: %v", id, err)
+			t.Fatalf("frozts KeyImportPart1 party %d: %v", id, err)
 		}
 		if id == 1 {
 			vk = outVK
@@ -122,26 +122,26 @@ func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIn
 	}
 
 	type r2Result struct {
-		secret frozt.DkgSecretHandle
-		r2Pkgs []frozt.MapEntry
+		secret frozts.DkgSecretHandle
+		r2Pkgs []frozts.MapEntry
 	}
 	r2Results := make([]r2Result, n)
 
 	for i := uint16(0); i < n; i++ {
-		var others []frozt.MapEntry
+		var others []frozts.MapEntry
 		for j := uint16(0); j < n; j++ {
 			if j == i {
 				continue
 			}
-			others = append(others, frozt.MapEntry{ID: parties[j].id, Value: parties[j].r1Pkg})
+			others = append(others, frozts.MapEntry{ID: parties[j].id, Value: parties[j].r1Pkg})
 		}
-		secret, pkgsBytes, err := frozt.DkgPart2(parties[i].secret, frozt.EncodeMap(others))
+		secret, pkgsBytes, err := frozts.DkgPart2(parties[i].secret, frozts.EncodeMap(others))
 		if err != nil {
-			t.Fatalf("frozt DkgPart2 party %d: %v", parties[i].id, err)
+			t.Fatalf("frozts DkgPart2 party %d: %v", parties[i].id, err)
 		}
-		entries, decErr := frozt.DecodeMap(pkgsBytes)
+		entries, decErr := frozts.DecodeMap(pkgsBytes)
 		if decErr != nil {
-			t.Fatalf("frozt DecodeMap r2 party %d: %v", parties[i].id, decErr)
+			t.Fatalf("frozts DecodeMap r2 party %d: %v", parties[i].id, decErr)
 		}
 		r2Results[i] = r2Result{secret: secret, r2Pkgs: entries}
 	}
@@ -150,27 +150,27 @@ func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIn
 	var pkp []byte
 	for i := uint16(0); i < n; i++ {
 		myID := i + 1
-		var r1Others []frozt.MapEntry
+		var r1Others []frozts.MapEntry
 		for j := uint16(0); j < n; j++ {
 			if j == i {
 				continue
 			}
-			r1Others = append(r1Others, frozt.MapEntry{ID: parties[j].id, Value: parties[j].r1Pkg})
+			r1Others = append(r1Others, frozts.MapEntry{ID: parties[j].id, Value: parties[j].r1Pkg})
 		}
-		var r2ForMe []frozt.MapEntry
+		var r2ForMe []frozts.MapEntry
 		for senderIdx := uint16(0); senderIdx < n; senderIdx++ {
 			if senderIdx == i {
 				continue
 			}
 			for _, entry := range r2Results[senderIdx].r2Pkgs {
 				if entry.ID == myID {
-					r2ForMe = append(r2ForMe, frozt.MapEntry{ID: parties[senderIdx].id, Value: entry.Value})
+					r2ForMe = append(r2ForMe, frozts.MapEntry{ID: parties[senderIdx].id, Value: entry.Value})
 				}
 			}
 		}
-		kp, p, err := frozt.KeyImportPart3(r2Results[i].secret, frozt.EncodeMap(r1Others), frozt.EncodeMap(r2ForMe), vk)
+		kp, p, err := frozts.KeyImportPart3(r2Results[i].secret, frozts.EncodeMap(r1Others), frozts.EncodeMap(r2ForMe), vk)
 		if err != nil {
-			t.Fatalf("frozt KeyImportPart3 party %d: %v", i+1, err)
+			t.Fatalf("frozts KeyImportPart3 party %d: %v", i+1, err)
 		}
 		kps[i] = kp
 		if i == 0 {
@@ -178,7 +178,7 @@ func runFroztKeyImport(t *testing.T, n, threshold uint16, seed []byte, accountIn
 		}
 	}
 
-	return froztKeyImportResult{keyPackages: kps, pubKeyPackage: pkp, vk: vk, extras: extras}
+	return froztsKeyImportResult{keyPackages: kps, pubKeyPackage: pkp, vk: vk, extras: extras}
 }
 
 func runFroztSign(t *testing.T, keyPackages [][]byte, pubKeyPackage []byte, signerIndices []int, message []byte) []byte {
@@ -187,42 +187,42 @@ func runFroztSign(t *testing.T, keyPackages [][]byte, pubKeyPackage []byte, sign
 	type signerState struct {
 		idx    int
 		id     uint16
-		nonces frozt.NoncesHandle
+		nonces frozts.NoncesHandle
 		commit []byte
 	}
 
 	signers := make([]signerState, len(signerIndices))
 	for i, idx := range signerIndices {
 		id := uint16(idx + 1)
-		nonces, commitments, err := frozt.SignCommit(keyPackages[idx])
+		nonces, commitments, err := frozts.SignCommit(keyPackages[idx])
 		if err != nil {
-			t.Fatalf("frozt SignCommit signer %d: %v", id, err)
+			t.Fatalf("frozts SignCommit signer %d: %v", id, err)
 		}
 		signers[i] = signerState{idx: idx, id: id, nonces: nonces, commit: commitments}
 	}
 
-	var commitEntries []frozt.MapEntry
+	var commitEntries []frozts.MapEntry
 	for _, s := range signers {
-		commitEntries = append(commitEntries, frozt.MapEntry{ID: s.id, Value: s.commit})
+		commitEntries = append(commitEntries, frozts.MapEntry{ID: s.id, Value: s.commit})
 	}
 
-	signingPackage, randomizer, err := frozt.SignNewPackage(message, frozt.EncodeMap(commitEntries), pubKeyPackage)
+	signingPackage, randomizer, err := frozts.SignNewPackage(message, frozts.EncodeMap(commitEntries), pubKeyPackage)
 	if err != nil {
-		t.Fatalf("frozt SignNewPackage: %v", err)
+		t.Fatalf("frozts SignNewPackage: %v", err)
 	}
 
-	var shareEntries []frozt.MapEntry
+	var shareEntries []frozts.MapEntry
 	for _, s := range signers {
-		share, signErr := frozt.Sign(signingPackage, s.nonces, keyPackages[s.idx], randomizer)
+		share, signErr := frozts.Sign(signingPackage, s.nonces, keyPackages[s.idx], randomizer)
 		if signErr != nil {
-			t.Fatalf("frozt Sign signer %d: %v", s.id, signErr)
+			t.Fatalf("frozts Sign signer %d: %v", s.id, signErr)
 		}
-		shareEntries = append(shareEntries, frozt.MapEntry{ID: s.id, Value: share})
+		shareEntries = append(shareEntries, frozts.MapEntry{ID: s.id, Value: share})
 	}
 
-	signature, err := frozt.SignAggregate(signingPackage, frozt.EncodeMap(shareEntries), pubKeyPackage, randomizer)
+	signature, err := frozts.SignAggregate(signingPackage, frozts.EncodeMap(shareEntries), pubKeyPackage, randomizer)
 	if err != nil {
-		t.Fatalf("frozt SignAggregate: %v", err)
+		t.Fatalf("frozts SignAggregate: %v", err)
 	}
 	return signature
 }
@@ -394,13 +394,13 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 	if mnemonic == "" {
 		t.Fatal("FROZT_MNEMONIC not set in .env")
 	}
-	froztBirthdayStr := env["FROZT_BIRTHDAY"]
-	froztBirthday, err := strconv.Atoi(froztBirthdayStr)
+	froztsBirthdayStr := env["FROZT_BIRTHDAY"]
+	froztsBirthday, err := strconv.Atoi(froztsBirthdayStr)
 	if err != nil {
 		t.Fatalf("invalid FROZT_BIRTHDAY: %v", err)
 	}
-	froztExpectedAddr := env["FROZT_EXPECTED_ADDRESS"]
-	if froztExpectedAddr == "" {
+	froztsExpectedAddr := env["FROZT_EXPECTED_ADDRESS"]
+	if froztsExpectedAddr == "" {
 		t.Fatal("FROZT_EXPECTED_ADDRESS not set in .env")
 	}
 
@@ -424,23 +424,23 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 
 	t.Log("=== Frozt: key import 2-of-3 from mnemonic ===")
 	zcashSeed := zcashSeedFromMnemonic(mnemonic)
-	froztResult := runFroztKeyImport(t, n, threshold, zcashSeed, 0)
+	froztsResult := runFroztKeyImport(t, n, threshold, zcashSeed, 0)
 
-	froztVK, err := frozt.PubKeyPackageVerifyingKey(froztResult.pubKeyPackage)
+	froztsVK, err := frozts.PubKeyPackageVerifyingKey(froztsResult.pubKeyPackage)
 	if err != nil {
-		t.Fatalf("frozt PubKeyPackageVerifyingKey: %v", err)
+		t.Fatalf("frozts PubKeyPackageVerifyingKey: %v", err)
 	}
-	froztVKHex := hex.EncodeToString(froztVK)
+	froztsVKHex := hex.EncodeToString(froztsVK)
 
-	froztKeys, err := frozt.SaplingDeriveKeys(froztResult.pubKeyPackage, froztResult.extras)
+	froztsKeys, err := frozts.SaplingDeriveKeys(froztsResult.pubKeyPackage, froztsResult.extras)
 	if err != nil {
-		t.Fatalf("frozt SaplingDeriveKeys: %v", err)
+		t.Fatalf("frozts SaplingDeriveKeys: %v", err)
 	}
-	if froztKeys.Address != froztExpectedAddr {
-		t.Fatalf("frozt address mismatch:\n  got:  %s\n  want: %s", froztKeys.Address, froztExpectedAddr)
+	if froztsKeys.Address != froztsExpectedAddr {
+		t.Fatalf("frozts address mismatch:\n  got:  %s\n  want: %s", froztsKeys.Address, froztsExpectedAddr)
 	}
-	t.Logf("frozt z-address: %s", froztKeys.Address)
-	t.Logf("frozt verifying key: %s", froztVKHex)
+	t.Logf("frozts z-address: %s", froztsKeys.Address)
+	t.Logf("frozts verifying key: %s", froztsVKHex)
 
 	t.Log("=== Fromt: key import 2-of-3 from mnemonic ===")
 	moneroSeed := moneroSeedFromMnemonic(t, fromtMnemonic)
@@ -469,11 +469,11 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	for i := 0; i < int(n); i++ {
-		froztBundle, bundleErr := frozt.KeyShareBundlePack(
-			froztResult.keyPackages[i], froztResult.pubKeyPackage, froztResult.extras, uint64(froztBirthday),
+		froztsBundle, bundleErr := frozts.KeyShareBundlePack(
+			froztsResult.keyPackages[i], froztsResult.pubKeyPackage, froztsResult.extras, uint64(froztsBirthday),
 		)
 		if bundleErr != nil {
-			t.Fatalf("frozt KeyShareBundlePack party %d: %v", i+1, bundleErr)
+			t.Fatalf("frozts KeyShareBundlePack party %d: %v", i+1, bundleErr)
 		}
 
 		vault := &v1.Vault{
@@ -483,8 +483,8 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 			LibType:      keygenV1.LibType_LIB_TYPE_KEYIMPORT,
 		}
 
-		froztEntry := sharedvault.FroztChainKeyEntry(froztBundle, froztVKHex)
-		sharedvault.SetChainKeyEntry(vault, froztEntry)
+		froztsEntry := sharedvault.FroztChainKeyEntry(froztsBundle, froztsVKHex)
+		sharedvault.SetChainKeyEntry(vault, froztsEntry)
 
 		fromtEntry := sharedvault.FromtChainKeyEntry(fromtResult.keyShares[i], fromtPKHex)
 		sharedvault.SetChainKeyEntry(vault, fromtEntry)
@@ -547,40 +547,40 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 		}
 
 		// --- Frozt chain entry ---
-		froztEntry, found := sharedvault.FindChainKeyEntry(parsedVault, sharedvault.ChainZcashSapling)
+		froztsEntry, found := sharedvault.FindChainKeyEntry(parsedVault, sharedvault.ChainZcashSapling)
 		if !found {
 			t.Fatalf("ZcashSapling chain key not found in party %d", i+1)
 		}
-		if froztEntry.PublicKey != froztVKHex {
-			t.Fatalf("frozt public key mismatch party %d", i+1)
+		if froztsEntry.PublicKey != froztsVKHex {
+			t.Fatalf("frozts public key mismatch party %d", i+1)
 		}
 
-		froztBundle, vk, decErr := sharedvault.ParseChainKeyEntry(froztEntry)
+		froztsBundle, vk, decErr := sharedvault.ParseChainKeyEntry(froztsEntry)
 		if decErr != nil {
-			t.Fatalf("frozt ParseChainKeyEntry party %d: %v", i+1, decErr)
+			t.Fatalf("frozts ParseChainKeyEntry party %d: %v", i+1, decErr)
 		}
-		if !bytes.Equal(vk, froztVK) {
-			t.Fatalf("frozt decoded VK mismatch party %d", i+1)
+		if !bytes.Equal(vk, froztsVK) {
+			t.Fatalf("frozts decoded VK mismatch party %d", i+1)
 		}
 
-		kpBytes, kpErr := frozt.KeyShareBundleKeyPackage(froztBundle)
+		kpBytes, kpErr := frozts.KeyShareBundleKeyPackage(froztsBundle)
 		if kpErr != nil {
-			t.Fatalf("frozt KeyShareBundleKeyPackage party %d: %v", i+1, kpErr)
+			t.Fatalf("frozts KeyShareBundleKeyPackage party %d: %v", i+1, kpErr)
 		}
-		pkpBytes, pkpErr := frozt.KeyShareBundlePubKeyPackage(froztBundle)
+		pkpBytes, pkpErr := frozts.KeyShareBundlePubKeyPackage(froztsBundle)
 		if pkpErr != nil {
-			t.Fatalf("frozt KeyShareBundlePubKeyPackage party %d: %v", i+1, pkpErr)
+			t.Fatalf("frozts KeyShareBundlePubKeyPackage party %d: %v", i+1, pkpErr)
 		}
-		extrasBytes, extErr := frozt.KeyShareBundleSaplingExtras(froztBundle)
+		extrasBytes, extErr := frozts.KeyShareBundleSaplingExtras(froztsBundle)
 		if extErr != nil {
-			t.Fatalf("frozt KeyShareBundleSaplingExtras party %d: %v", i+1, extErr)
+			t.Fatalf("frozts KeyShareBundleSaplingExtras party %d: %v", i+1, extErr)
 		}
-		bday, bdayErr := frozt.KeyShareBundleBirthday(froztBundle)
+		bday, bdayErr := frozts.KeyShareBundleBirthday(froztsBundle)
 		if bdayErr != nil {
-			t.Fatalf("frozt KeyShareBundleBirthday party %d: %v", i+1, bdayErr)
+			t.Fatalf("frozts KeyShareBundleBirthday party %d: %v", i+1, bdayErr)
 		}
-		if bday != uint64(froztBirthday) {
-			t.Fatalf("frozt birthday mismatch party %d: got %d, want %d", i+1, bday, froztBirthday)
+		if bday != uint64(froztsBirthday) {
+			t.Fatalf("frozts birthday mismatch party %d: got %d, want %d", i+1, bday, froztsBirthday)
 		}
 
 		importedFroztKPs[i] = kpBytes
@@ -640,27 +640,27 @@ func TestVultCombinedRoundTrip(t *testing.T) {
 			t.Fatalf("fromt birthday mismatch party %d: got %d, want %d", i+1, importedBday, fromtBirthday)
 		}
 
-		t.Logf("party %d: frozt bundle=%d bytes, fromt keyshare=%d bytes — all fields match",
-			i+1, len(froztBundle), len(fromtBundle))
+		t.Logf("party %d: frozts bundle=%d bytes, fromt keyshare=%d bytes — all fields match",
+			i+1, len(froztsBundle), len(fromtBundle))
 	}
 
 	t.Log("=== Frozt: re-derive address from imported shares ===")
-	reKeys, err := frozt.SaplingDeriveKeys(importedFroztPKP, importedFroztExtras)
+	reKeys, err := frozts.SaplingDeriveKeys(importedFroztPKP, importedFroztExtras)
 	if err != nil {
-		t.Fatalf("frozt SaplingDeriveKeys: %v", err)
+		t.Fatalf("frozts SaplingDeriveKeys: %v", err)
 	}
-	if reKeys.Address != froztExpectedAddr {
-		t.Fatalf("frozt re-derived address mismatch:\n  got:  %s\n  want: %s", reKeys.Address, froztExpectedAddr)
+	if reKeys.Address != froztsExpectedAddr {
+		t.Fatalf("frozts re-derived address mismatch:\n  got:  %s\n  want: %s", reKeys.Address, froztsExpectedAddr)
 	}
-	t.Logf("frozt re-derived address: %s", reKeys.Address)
+	t.Logf("frozts re-derived address: %s", reKeys.Address)
 
 	t.Log("=== Frozt: sign with imported .vult shares (parties 0,1) ===")
-	froztSig1 := runFroztSign(t, importedFroztKPs, importedFroztPKP, []int{0, 1}, []byte("combined vult test"))
-	t.Logf("frozt signature (0,1): %x (%d bytes)", froztSig1, len(froztSig1))
+	froztsSig1 := runFroztSign(t, importedFroztKPs, importedFroztPKP, []int{0, 1}, []byte("combined vult test"))
+	t.Logf("frozts signature (0,1): %x (%d bytes)", froztsSig1, len(froztsSig1))
 
 	t.Log("=== Frozt: sign with imported .vult shares (parties 1,2) ===")
-	froztSig2 := runFroztSign(t, importedFroztKPs, importedFroztPKP, []int{1, 2}, []byte("combined vult test"))
-	t.Logf("frozt signature (1,2): %x (%d bytes)", froztSig2, len(froztSig2))
+	froztsSig2 := runFroztSign(t, importedFroztKPs, importedFroztPKP, []int{1, 2}, []byte("combined vult test"))
+	t.Logf("frozts signature (1,2): %x (%d bytes)", froztsSig2, len(froztsSig2))
 
 	t.Log("=== Fromt: sign with imported .vult shares (parties 0,1) ===")
 	fromtSig1 := runFromtSign(t, importedFromtKS, []int{0, 1}, []byte("combined vult test"))

@@ -1,0 +1,37 @@
+[package]
+name = "frozts-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+frost-core = { version = "2.2", features = ["internals", "serialization"] }
+frost-rerandomized = "2.2"
+reddsa = { git = "https://github.com/ZcashFoundation/reddsa.git", rev = "475a552", features = ["frost"] }
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+sapling-crypto = { version = "0.6", default-features = false, features = ["circuit"] }
+jubjub = "0.10"
+ff = "0.13"
+group = "0.13"
+bech32 = "0.11"
+zip32 = "0.2"
+zcash_address = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61" }
+zcash_note_encryption = "0.4"
+zcash_protocol = { git = "https://github.com/ChainSafe/librustzcash-nu61", branch = "feat/snap-nu61" }
+incrementalmerkletree = { version = "0.8", features = ["legacy-api"] }
+byteorder = "1"
+hex = "0.4"
+zeroize = "1"
+frozts-lib = { path = "../frozts-lib", default-features = false }
+frost-session = { path = "../frost-session" }
+frost-ceremony = { path = "../frost-ceremony" }
+blake2b_simd = "1"
+redjubjub = "0.8"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

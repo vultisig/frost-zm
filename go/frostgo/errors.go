@@ -39,7 +39,7 @@ var sharedErrorMessages = map[int]string{
 	LibBlame:             "blame",
 }
 
-var froztMessages = map[int]string{
+var froztsMessages = map[int]string{
 	13: "sapling error",
 }
 
@@ -59,8 +59,8 @@ func ToError(prefix string, code int) error {
 	msg, found := sharedErrorMessages[code]
 	if !found {
 		switch prefix {
-		case "frozt":
-			msg, found = froztMessages[code]
+		case "frozts":
+			msg, found = froztsMessages[code]
 		case "fromt":
 			msg, found = fromtMessages[code]
 		}

@@ -5,24 +5,24 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates/ crates/
 
 RUN cargo test --workspace
-RUN cargo build --release -p frozt-lib -p fromt-lib
+RUN cargo build --release -p frozts-lib -p fromt-lib
 
 FROM golang:1.22-bookworm
 
-COPY --from=rust-builder /build/target/release/libfroztlib.so /usr/lib/
+COPY --from=rust-builder /build/target/release/libfroztslib.so /usr/lib/
 COPY --from=rust-builder /build/target/release/libfromtlib.so /usr/lib/
 RUN ldconfig
 
 WORKDIR /build
 COPY go/ go/
 
-COPY --from=rust-builder /build/crates/frozt-lib/include/frozt-lib.h go/frozt/includes/
+COPY --from=rust-builder /build/crates/frozts-lib/include/frozts-lib.h go/frozts/includes/
 COPY --from=rust-builder /build/crates/fromt-lib/include/fromt-lib.h go/fromt/includes/
 
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then LIBDIR=linux-amd64; else LIBDIR=linux-arm64; fi && \
-    mkdir -p go/frozt/includes/$LIBDIR go/fromt/includes/$LIBDIR && \
-    cp /usr/lib/libfroztlib.so go/frozt/includes/$LIBDIR/ && \
+    mkdir -p go/frozts/includes/$LIBDIR go/fromt/includes/$LIBDIR && \
+    cp /usr/lib/libfroztslib.so go/frozts/includes/$LIBDIR/ && \
     cp /usr/lib/libfromtlib.so go/fromt/includes/$LIBDIR/
 
 WORKDIR /build/go

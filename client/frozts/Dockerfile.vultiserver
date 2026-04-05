@@ -1,0 +1,46 @@
+FROM rust:1.83-bookworm AS rust-builder
+
+WORKDIR /build
+COPY frosty-lib/Cargo.toml frosty-lib/rust-toolchain.toml ./
+COPY frosty-lib/Cargo.lock ./
+COPY frosty-lib/crates/ crates/
+
+RUN cargo build --release -p frozts-lib
+
+FROM golang:1.25-bookworm AS go-builder
+
+COPY --from=rust-builder /build/target/release/libfroztslib.so /usr/lib/
+RUN ldconfig
+
+WORKDIR /build
+
+COPY frosty-lib/go/ frosty-lib/go/
+COPY --from=rust-builder /build/crates/frozts-lib/include/frozts-lib.h frosty-lib/go/frozts/includes/
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then LIBDIR=linux-amd64; else LIBDIR=linux-arm64; fi && \
+    mkdir -p frosty-lib/go/frozts/includes/$LIBDIR && \
+    cp /usr/lib/libfroztslib.so frosty-lib/go/frozts/includes/$LIBDIR/
+
+COPY commondata/ commondata/
+COPY vultiserver/ vultiserver/
+
+WORKDIR /build/vultiserver
+RUN CGO_ENABLED=1 go build -o /vultisigner ./cmd/vultisigner && \
+    CGO_ENABLED=1 go build -o /worker ./cmd/worker && \
+    find /go/pkg/mod/github.com/vultisig/go-wrappers*/includes/linux -name "*.so" -exec cp {} /usr/lib/ \;
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+COPY --from=rust-builder /build/target/release/libfroztslib.so /usr/lib/
+COPY --from=go-builder /usr/lib/libgodkls.so /usr/lib/
+COPY --from=go-builder /usr/lib/libgoschnorr.so /usr/lib/
+RUN ldconfig
+
+COPY --from=go-builder /vultisigner /usr/local/bin/vultisigner
+COPY --from=go-builder /worker /usr/local/bin/worker
+
+RUN mkdir -p /data/vaults
+
+EXPOSE 8080

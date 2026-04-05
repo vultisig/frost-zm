@@ -62,15 +62,15 @@ These are the files that implement protocol logic beyond calling upstream librar
 | `crates/frost-ceremony/src/key_import.rs` | Import existing secret key into threshold shares | Polynomial constant term = `secret - (N-1)`, others use `1`; feeds into standard DKG part2/part3 |
 | `crates/frost-ceremony/src/blame.rs` | Extract culprit from frost-core errors | No crypto — reverse-maps `Identifier<C>` to u16 |
 
-### Zcash (frozt)
+### Zcash (frozts)
 
 | File | What it does | Custom math |
 |------|-------------|-------------|
-| `crates/frozt-lib/src/sapling.rs` | Compose FROST group key with Sapling scalars (nsk, ovk, dk) to derive DiversifiableFullViewingKey and z-address | `nk = G_nk * nsk` point multiplication; rest delegates to `sapling-crypto` |
-| `crates/frozt-lib/src/key_import.rs` | Zcash-specific key import — derives `ask` from BIP39 seed via ZIP 32 path | Calls `derive_spending_key` then generic `key_import_part1` |
-| `crates/frozt-lib/src/session.rs` (sign section) | Session-based rerandomized signing — coordinator generates randomizer, broadcasts SigningPackage + Randomizer | Delegates to `frost_rerandomized::sign` and `frost_rerandomized::aggregate` |
-| `crates/frozt-lib/src/tx.rs` | Sapling v5 transaction assembly | Serialization only — proof generation delegates to `sapling-crypto` Groth16 provers |
-| `crates/frozt-lib/src/ceremony_metadata.rs` | Versioned metadata blob with Blake2b hash verification | Blake2b hash comparison — no custom crypto |
+| `crates/frozts-lib/src/sapling.rs` | Compose FROST group key with Sapling scalars (nsk, ovk, dk) to derive DiversifiableFullViewingKey and z-address | `nk = G_nk * nsk` point multiplication; rest delegates to `sapling-crypto` |
+| `crates/frozts-lib/src/key_import.rs` | Zcash-specific key import — derives `ask` from BIP39 seed via ZIP 32 path | Calls `derive_spending_key` then generic `key_import_part1` |
+| `crates/frozts-lib/src/session.rs` (sign section) | Session-based rerandomized signing — coordinator generates randomizer, broadcasts SigningPackage + Randomizer | Delegates to `frost_rerandomized::sign` and `frost_rerandomized::aggregate` |
+| `crates/frozts-lib/src/tx.rs` | Sapling v5 transaction assembly | Serialization only — proof generation delegates to `sapling-crypto` Groth16 provers |
+| `crates/frozts-lib/src/ceremony_metadata.rs` | Versioned metadata blob with Blake2b hash verification | Blake2b hash comparison — no custom crypto |
 
 ### Monero (fromt)
 
@@ -109,7 +109,7 @@ Go side uses `runtime.Pinner` to prevent GC from moving slices during CGo calls.
 
 ## Wire Formats
 
-### KeyShareBundle (frozt)
+### KeyShareBundle (frozts)
 ```
 [version:u8][birthday:u64 LE][extras_len:u32 LE][sapling_extras:96][kp_len:u32 LE][KeyPackage][pkp_len:u32 LE][PublicKeyPackage]
 ```
@@ -151,7 +151,7 @@ Inbox frame:  [sender:u16 LE][payload]
 ```bash
 cargo test -p frost-ceremony    # 5 tests (blame unit tests)
 cargo test -p frost-session     # 7 tests (protocol state machine)
-cargo test -p frozt-lib         # 56 tests (DKG, sign, reshare, key import, sapling, tx building)
+cargo test -p frozts-lib         # 56 tests (DKG, sign, reshare, key import, sapling, tx building)
 cargo test -p fromt-lib         # 26 tests (DKG, sign, reshare, key import, CKD, key image, spend)
 ```
 

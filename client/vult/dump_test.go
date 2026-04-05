@@ -11,7 +11,7 @@ import (
 	keygenV1 "github.com/vultisig/commondata/go/vultisig/keygen/v1"
 
 	fromt "github.com/vultisig/frosty-lib/go/fromt"
-	frozt "github.com/vultisig/frosty-lib/go/frozt"
+	frozts "github.com/vultisig/frosty-lib/go/frozts"
 
 	sharedvault "github.com/vultisig/frosty-lib/client/shared/vault"
 )
@@ -29,11 +29,11 @@ func TestDumpVultStructure(t *testing.T) {
 	}
 
 	zcashSeed := zcashSeedFromMnemonic(mnemonic)
-	froztResult := runFroztKeyImport(t, 3, 2, zcashSeed, 0)
+	froztsResult := runFroztKeyImport(t, 3, 2, zcashSeed, 0)
 
-	froztVK, _ := frozt.PubKeyPackageVerifyingKey(froztResult.pubKeyPackage)
-	froztVKHex := hex.EncodeToString(froztVK)
-	froztKeys, _ := frozt.SaplingDeriveKeys(froztResult.pubKeyPackage, froztResult.extras)
+	froztsVK, _ := frozts.PubKeyPackageVerifyingKey(froztsResult.pubKeyPackage)
+	froztsVKHex := hex.EncodeToString(froztsVK)
+	froztsKeys, _ := frozts.SaplingDeriveKeys(froztsResult.pubKeyPackage, froztsResult.extras)
 
 	moneroSeed := moneroSeedFromMnemonic(t, fromtMnemonic)
 	fromtResult := runFromtKeyImport(t, 3, 2, moneroSeed, 0, 0)
@@ -43,8 +43,8 @@ func TestDumpVultStructure(t *testing.T) {
 	fromtAddr, _ := fromt.DeriveAddress(fromtResult.keyShares[0])
 	fromtViewKey, _ := fromt.KeyShareViewKey(fromtResult.keyShares[0])
 
-	froztBundle, _ := frozt.KeyShareBundlePack(
-		froztResult.keyPackages[0], froztResult.pubKeyPackage, froztResult.extras, 3256538,
+	froztsBundle, _ := frozts.KeyShareBundlePack(
+		froztsResult.keyPackages[0], froztsResult.pubKeyPackage, froztsResult.extras, 3256538,
 	)
 
 	vault := &v1.Vault{
@@ -54,8 +54,8 @@ func TestDumpVultStructure(t *testing.T) {
 		LibType:      keygenV1.LibType_LIB_TYPE_KEYIMPORT,
 	}
 
-	froztEntry := sharedvault.FroztChainKeyEntry(froztBundle, froztVKHex)
-	sharedvault.SetChainKeyEntry(vault, froztEntry)
+	froztsEntry := sharedvault.FroztChainKeyEntry(froztsBundle, froztsVKHex)
+	sharedvault.SetChainKeyEntry(vault, froztsEntry)
 
 	fromtEntry := sharedvault.FromtChainKeyEntry(fromtResult.keyShares[0], fromtPKHex)
 	sharedvault.SetChainKeyEntry(vault, fromtEntry)
@@ -87,22 +87,22 @@ func TestDumpVultStructure(t *testing.T) {
 	fmt.Println()
 
 	fmt.Println("── ZcashSapling ──────────────────────────────────────────────")
-	fmt.Printf("  verifying_key:  %s\n", froztVKHex)
-	fmt.Printf("  z-address:      %s\n", froztKeys.Address)
-	fmt.Printf("  bundle size:    %d bytes\n", len(froztBundle))
+	fmt.Printf("  verifying_key:  %s\n", froztsVKHex)
+	fmt.Printf("  z-address:      %s\n", froztsKeys.Address)
+	fmt.Printf("  bundle size:    %d bytes\n", len(froztsBundle))
 
-	froztKP, _ := frozt.KeyShareBundleKeyPackage(froztBundle)
-	froztPKP, _ := frozt.KeyShareBundlePubKeyPackage(froztBundle)
-	froztExtras, _ := frozt.KeyShareBundleSaplingExtras(froztBundle)
-	froztBday, _ := frozt.KeyShareBundleBirthday(froztBundle)
+	froztsKP, _ := frozts.KeyShareBundleKeyPackage(froztsBundle)
+	froztsPKP, _ := frozts.KeyShareBundlePubKeyPackage(froztsBundle)
+	froztsExtras, _ := frozts.KeyShareBundleSaplingExtras(froztsBundle)
+	froztsBday, _ := frozts.KeyShareBundleBirthday(froztsBundle)
 
-	fmt.Printf("  birthday:       %d\n", froztBday)
-	fmt.Printf("  key_package:    %d bytes\n", len(froztKP))
-	fmt.Printf("  pub_key_pkg:    %d bytes\n", len(froztPKP))
-	fmt.Printf("  sapling_extras: %d bytes (nsk[32] || ovk[32] || dk[32])\n", len(froztExtras))
-	fmt.Printf("    nsk: %s\n", hex.EncodeToString(froztExtras[:32]))
-	fmt.Printf("    ovk: %s\n", hex.EncodeToString(froztExtras[32:64]))
-	fmt.Printf("    dk:  %s\n", hex.EncodeToString(froztExtras[64:96]))
+	fmt.Printf("  birthday:       %d\n", froztsBday)
+	fmt.Printf("  key_package:    %d bytes\n", len(froztsKP))
+	fmt.Printf("  pub_key_pkg:    %d bytes\n", len(froztsPKP))
+	fmt.Printf("  sapling_extras: %d bytes (nsk[32] || ovk[32] || dk[32])\n", len(froztsExtras))
+	fmt.Printf("    nsk: %s\n", hex.EncodeToString(froztsExtras[:32]))
+	fmt.Printf("    ovk: %s\n", hex.EncodeToString(froztsExtras[32:64]))
+	fmt.Printf("    dk:  %s\n", hex.EncodeToString(froztsExtras[64:96]))
 	fmt.Println()
 
 	fmt.Println("── Monero ────────────────────────────────────────────────────")
