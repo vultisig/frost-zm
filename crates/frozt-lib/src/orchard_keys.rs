@@ -42,6 +42,18 @@ pub fn generate_orchard_extras_raw() -> Result<Vec<u8>, lib_error> {
 /// The group verifying key (32 bytes on Pallas) becomes the SpendValidatingKey (ak).
 /// extras[0..32] = nk bytes, extras[32..64] = rivk bytes.
 /// The full FVK is constructed as 96 bytes: ak || nk || rivk, then parsed.
+///
+/// `pkp_data` accepts either:
+///   - the already-serialized 32-byte group verifying key (i.e. the
+///     `group_public` hex that `orchard-frost-wasm` exposes and that callers
+///     store in `OrchardKeyBundle.publicKeyPackage.groupPublic`), or
+///   - a full `frost_core::keys::PublicKeyPackage<PallasBlake2b512>` byte
+///     string (used by in-tree keygen tests).
+///
+/// Both paths extract the 32-byte ak; passing 32 bytes directly is preferred
+/// because the PublicKeyPackage serialisation is version-specific across
+/// frost-core crate majors and is brittle to carry across language
+/// boundaries.
 pub fn build_orchard_fvk(
 	pkp_data: &[u8],
 	extras: &[u8],
@@ -50,13 +62,21 @@ pub fn build_orchard_fvk(
 		return Err(lib_error::LIB_INVALID_BUFFER_SIZE);
 	}
 
-	let pkp = frost_core::keys::PublicKeyPackage::<P>::deserialize(pkp_data)
-		.map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
-	let ak_bytes = pkp.verifying_key().serialize()
-		.map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+	let ak_bytes: [u8; 32] = if pkp_data.len() == 32 {
+		let mut ak = [0u8; 32];
+		ak.copy_from_slice(pkp_data);
+		ak
+	} else {
+		let pkp = frost_core::keys::PublicKeyPackage::<P>::deserialize(pkp_data)
+			.map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+		let ak_serialized = pkp.verifying_key().serialize()
+			.map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+		ak_serialized.as_ref().try_into()
+			.map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?
+	};
 
 	let mut fvk_raw = [0u8; 96];
-	fvk_raw[..32].copy_from_slice(ak_bytes.as_ref());
+	fvk_raw[..32].copy_from_slice(&ak_bytes);
 	fvk_raw[32..64].copy_from_slice(&extras[..32]);  // nk
 	fvk_raw[64..96].copy_from_slice(&extras[32..64]); // rivk
 
