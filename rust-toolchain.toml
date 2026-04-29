@@ -1,2 +1,12 @@
 [toolchain]
-channel = "stable"
+# Pinned to 1.90.0 because the monero-wallet stack (`monero-wallet@0.1.0`,
+# `monero-daemon-rpc@0.1.0`, `monero-simple-request-rpc@0.1.0`) hard-requires
+# rustc >= 1.89. Earlier "stable" channels (1.88.0 was the latest GA on the
+# CI host as of 2026-04-29) fail the build. Bump this in lockstep with any
+# upstream MSRV change in the monero crates rather than relying on the
+# floating "stable" alias, so CI never fights cargo's lockfile resolver
+# again.
+channel = "1.90.0"
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
+components = ["rustfmt", "clippy"]

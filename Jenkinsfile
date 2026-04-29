@@ -32,17 +32,34 @@ pipeline {
 				sh '''
 					echo "Branch:    ${BRANCH_NAME:-$GIT_BRANCH}"
 					echo "Commit:    $(git rev-parse --short HEAD || echo n/a)"
-					echo "Rust:      $(rustc --version 2>/dev/null || echo NOT_FOUND)"
-					echo "Cargo:     $(cargo --version 2>/dev/null || echo NOT_FOUND)"
 					echo "Go:        $(go version 2>/dev/null || echo NOT_FOUND)"
 					echo "wasm-pack: $(wasm-pack --version 2>/dev/null || echo NOT_FOUND)"
 
-					for cmd in rustc cargo go wasm-pack make; do
+					for cmd in rustup cargo go wasm-pack make; do
 						if ! command -v "$cmd" >/dev/null 2>&1; then
 							echo "ERROR: required toolchain component '$cmd' is missing"
 							exit 1
 						fi
 					done
+
+					# Make sure the toolchain pinned in rust-toolchain.toml is
+					# actually installed BEFORE the first cargo invocation, so
+					# the build does not race rustup auto-install (which can
+					# silently fall back to "stable" if the network blip and
+					# leave us on the wrong rustc).
+					PINNED=$(awk -F\\" "/^channel/ {print \\$2}" rust-toolchain.toml)
+					if [ -z "$PINNED" ]; then
+						echo "ERROR: could not read pinned channel from rust-toolchain.toml"
+						exit 1
+					fi
+					echo "Pinned:    $PINNED"
+					rustup toolchain install "$PINNED" \
+						--profile minimal \
+						--component rustfmt --component clippy \
+						--target wasm32-unknown-unknown \
+						--no-self-update
+					echo "Rust:      $(rustc --version)"
+					echo "Cargo:     $(cargo --version)"
 				'''
 			}
 		}

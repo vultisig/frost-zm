@@ -1159,6 +1159,8 @@ dependencies = [
  "incrementalmerkletree",
  "jubjub",
  "lazy_static",
+ "orchard 0.11.0",
+ "pasta_curves",
  "rand",
  "reddsa",
  "redjubjub",
@@ -1179,6 +1181,7 @@ dependencies = [
  "frost-ffi",
  "frozt-lib",
  "getrandom 0.2.17",
+ "orchard 0.12.0",
  "rustls",
  "sapling-crypto",
  "serde",
@@ -1189,6 +1192,7 @@ dependencies = [
  "zcash_client_memory",
  "zcash_keys",
  "zcash_protocol",
+ "zip32",
 ]
 
 [[package]]
@@ -1210,6 +1214,8 @@ dependencies = [
  "incrementalmerkletree",
  "js-sys",
  "jubjub",
+ "orchard 0.11.0",
+ "pasta_curves",
  "rand",
  "reddsa",
  "redjubjub",
@@ -1386,6 +1392,26 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "halo2_gadgets"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73a5e510d58a07d8ed238a5a8a436fe6c2c79e1bb2611f62688bc65007b4e6e7"
+dependencies = [
+ "arrayvec",
+ "bitvec",
+ "ff",
+ "group",
+ "halo2_poseidon",
+ "halo2_proofs",
+ "lazy_static",
+ "pasta_curves",
+ "rand",
+ "sinsemilla",
+ "subtle",
+ "uint",
 ]
 
 [[package]]
@@ -2480,6 +2506,41 @@ dependencies = [
 
 [[package]]
 name = "orchard"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1ef66fcf99348242a20d582d7434da381a867df8dc155b3a980eca767c56137"
+dependencies = [
+ "aes",
+ "bitvec",
+ "blake2b_simd",
+ "core2",
+ "ff",
+ "fpe",
+ "getset",
+ "group",
+ "halo2_gadgets 0.3.1",
+ "halo2_poseidon",
+ "halo2_proofs",
+ "hex",
+ "incrementalmerkletree",
+ "lazy_static",
+ "memuse",
+ "nonempty",
+ "pasta_curves",
+ "rand",
+ "reddsa",
+ "serde",
+ "sinsemilla",
+ "subtle",
+ "tracing",
+ "visibility",
+ "zcash_note_encryption",
+ "zcash_spec",
+ "zip32",
+]
+
+[[package]]
+name = "orchard"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c01cd4ea711aab5f263f2b7aa6966687a2d6c7df4f78eb1b97a66a7a4e78e3b"
@@ -2492,7 +2553,7 @@ dependencies = [
  "fpe",
  "getset",
  "group",
- "halo2_gadgets",
+ "halo2_gadgets 0.4.0",
  "halo2_poseidon",
  "halo2_proofs",
  "hex",
@@ -4609,7 +4670,7 @@ dependencies = [
  "incrementalmerkletree",
  "memuse",
  "nonempty",
- "orchard",
+ "orchard 0.12.0",
  "pasta_curves",
  "percent-encoding",
  "prost",
@@ -4653,7 +4714,7 @@ dependencies = [
  "incrementalmerkletree",
  "jubjub",
  "nonempty",
- "orchard",
+ "orchard 0.12.0",
  "prost",
  "prost-build",
  "rayon",
@@ -4707,7 +4768,7 @@ dependencies = [
  "group",
  "memuse",
  "nonempty",
- "orchard",
+ "orchard 0.12.0",
  "proptest",
  "rand_core",
  "sapling-crypto",
@@ -4756,7 +4817,7 @@ dependencies = [
  "jubjub",
  "memuse",
  "nonempty",
- "orchard",
+ "orchard 0.12.0",
  "rand",
  "rand_core",
  "redjubjub",
