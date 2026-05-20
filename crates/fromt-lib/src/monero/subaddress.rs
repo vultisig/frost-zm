@@ -4,7 +4,16 @@ use curve25519_dalek::scalar::Scalar;
 use tiny_keccak::{Hasher, Keccak};
 
 use crate::errors::lib_error;
-use crate::monero::address;
+use crate::monero::address::{
+    self, MAINNET_STANDARD, STAGENET_STANDARD, TESTNET_STANDARD,
+};
+
+/// Mainnet subaddress prefix (Monero magic byte 42 / 0x2A).
+const MAINNET_SUBADDRESS: u8 = 42;
+/// Testnet subaddress prefix (Monero magic byte 63 / 0x3F).
+const TESTNET_SUBADDRESS: u8 = 63;
+/// Stagenet subaddress prefix (Monero magic byte 36 / 0x24).
+const STAGENET_SUBADDRESS: u8 = 36;
 
 pub fn derive_subaddress(
     spend_pub_key: &[u8; 32],
@@ -38,8 +47,14 @@ pub fn derive_subaddress(
     let sub_spend_point = sub_spend.decompress().ok_or(lib_error::LIB_ADDRESS_ERROR)?;
     let sub_view = (&sub_spend_point * &view_scalar).compress();
 
+    // Accept both the legacy "0 = mainnet" sentinel and the actual
+    // Monero address prefix bytes that the DKG stores in
+    // `KeyShareBundle::network`. Translation table maps each standard
+    // address prefix to its corresponding subaddress prefix.
     let prefix = match network {
-        0 => 42u8,
+        0 | MAINNET_STANDARD => MAINNET_SUBADDRESS,
+        TESTNET_STANDARD => TESTNET_SUBADDRESS,
+        STAGENET_STANDARD => STAGENET_SUBADDRESS,
         _ => return Err(lib_error::LIB_ADDRESS_ERROR),
     };
 

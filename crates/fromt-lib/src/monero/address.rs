@@ -4,11 +4,28 @@ use tiny_keccak::{Hasher, Keccak};
 
 use crate::errors::lib_error;
 
-const MAINNET_STANDARD: u8 = 18;
+/// Mainnet standard address prefix (Monero magic byte 18 / 0x12).
+pub const MAINNET_STANDARD: u8 = 18;
+/// Testnet standard address prefix (Monero magic byte 53 / 0x35).
+pub const TESTNET_STANDARD: u8 = 53;
+/// Stagenet standard address prefix (Monero magic byte 24 / 0x18).
+pub const STAGENET_STANDARD: u8 = 24;
 
+/// Resolve a `KeyShareBundle::network` byte to the actual Monero
+/// standard-address prefix.
+///
+/// Callers can use either:
+/// * `0` — legacy "default mainnet" sentinel that existing tests
+///   and earlier callers passed through. Maps to mainnet (0x12).
+/// * `MAINNET_STANDARD` / `TESTNET_STANDARD` / `STAGENET_STANDARD` —
+///   the actual Monero address prefix byte. The DKG ceremony stores
+///   this directly in the bundle so the WASM `fromt_derive_address`
+///   path resolves a proper address without any further translation.
 fn network_prefix(network: u8) -> Result<u8, lib_error> {
     match network {
-        0 => Ok(MAINNET_STANDARD),
+        0 | MAINNET_STANDARD => Ok(MAINNET_STANDARD),
+        TESTNET_STANDARD => Ok(TESTNET_STANDARD),
+        STAGENET_STANDARD => Ok(STAGENET_STANDARD),
         _ => Err(lib_error::LIB_ADDRESS_ERROR),
     }
 }
@@ -106,5 +123,23 @@ mod tests {
         let view_key = [2u8; 32];
         assert!(derive_address(&spend_pub, &view_key, 1).is_err());
         assert!(derive_address(&spend_pub, &view_key, 2).is_err());
+    }
+
+    #[test]
+    fn test_network_prefix_accepts_actual_monero_bytes() {
+        let spend_pub = [1u8; 32];
+        let view_key = [2u8; 32];
+        // 0 (legacy sentinel) and 0x12 (real mainnet prefix) must
+        // both resolve to the same address.
+        let legacy = derive_address(&spend_pub, &view_key, 0).unwrap();
+        let canonical = derive_address(&spend_pub, &view_key, MAINNET_STANDARD).unwrap();
+        assert_eq!(legacy, canonical);
+        // Testnet / stagenet prefix bytes must succeed and produce
+        // a different (network-specific) address.
+        let testnet = derive_address(&spend_pub, &view_key, TESTNET_STANDARD).unwrap();
+        let stagenet = derive_address(&spend_pub, &view_key, STAGENET_STANDARD).unwrap();
+        assert_ne!(legacy, testnet);
+        assert_ne!(legacy, stagenet);
+        assert_ne!(testnet, stagenet);
     }
 }
