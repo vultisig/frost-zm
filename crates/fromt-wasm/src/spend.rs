@@ -192,6 +192,38 @@ pub fn fromt_build_signable_tx(
     inputs_data: &[u8],
     decoys_data: &[u8],
 ) -> Result<Vec<u8>, JsValue> {
+    // Backwards-compatible thin wrapper: any caller that hasn't
+    // migrated to the multi-output form keeps working as before.
+    let dests = encode_single_destination(recipient, amount);
+    fromt_build_signable_tx_multi(
+        key_share,
+        &dests,
+        fee_per_weight,
+        fee_mask,
+        inputs_data,
+        decoys_data,
+    )
+}
+
+/// Multi-output variant. `destinations_data` carries the full
+/// `(address, amount)` list — see [`encode_single_destination`] for
+/// the wire format (also implemented in TS by
+/// `encodeDestinationsBlob` in `moneroSpendCoordinator.ts`).
+///
+/// Use this when the wizard needs to add commission / donation
+/// outputs alongside the primary recipient. The Monero protocol
+/// supports up to 16 outputs in a single tx; we don't cap it here
+/// because `monero_wallet::send::SignableTransaction::new` already
+/// rejects bad shapes upstream.
+#[wasm_bindgen]
+pub fn fromt_build_signable_tx_multi(
+    key_share: &[u8],
+    destinations_data: &[u8],
+    fee_per_weight: u64,
+    fee_mask: u64,
+    inputs_data: &[u8],
+    decoys_data: &[u8],
+) -> Result<Vec<u8>, JsValue> {
     use zeroize::Zeroizing;
     use rand::rngs::OsRng;
     use rand::RngCore;
@@ -199,16 +231,21 @@ pub fn fromt_build_signable_tx(
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
     let view_pair = spend::view_pair_from_bundle(&bundle).map_err(to_js_err)?;
 
+    // Accept both legacy 0/1/2 indices and the Monero standard
+    // address-prefix bytes (0x12 / 0x35 / 0x18) so we stay consistent
+    // with `fromtlib::monero::address::network_prefix`, which is what
+    // the DKG ceremony actually stores in `KeyShareBundle::network`.
     let network = match bundle.network {
-        0 => monero_wallet::address::Network::Mainnet,
-        1 => monero_wallet::address::Network::Testnet,
-        2 => monero_wallet::address::Network::Stagenet,
-        _ => return Err(JsValue::from_str("unknown network")),
+        0 | 0x12 => monero_wallet::address::Network::Mainnet,
+        1 | 0x35 => monero_wallet::address::Network::Testnet,
+        2 | 0x18 => monero_wallet::address::Network::Stagenet,
+        other => return Err(JsValue::from_str(&format!("unknown network byte {other}"))),
     };
-    let recipient_addr = monero_wallet::address::MoneroAddress::from_str(
-        network,
-        recipient,
-    ).map_err(to_js_err)?;
+    let destinations = parse_destinations(destinations_data, network)
+        .map_err(|e| JsValue::from_str(&e))?;
+    if destinations.is_empty() {
+        return Err(JsValue::from_str("at least one destination is required"));
+    }
 
     let fee_rate = monero_wallet::interface::FeeRate::new(fee_per_weight, fee_mask)
         .ok_or_else(|| JsValue::from_str("invalid fee rate"))?;
@@ -238,13 +275,71 @@ pub fn fromt_build_signable_tx(
         monero_wallet::ringct::RctType::ClsagBulletproofPlus,
         outgoing_view,
         outputs_with_decoys,
-        vec![(recipient_addr, amount)],
+        destinations,
         change,
         vec![],
         fee_rate,
     ).map_err(to_js_err)?;
 
     Ok(signable.serialize())
+}
+
+/// Build the destinations blob for a single-recipient transaction.
+/// Layout (little-endian throughout):
+///
+/// ```text
+///   u32 count
+///   for each destination:
+///     u32 address_len
+///     bytes address (utf-8)
+///     u64 amount (piconero)
+/// ```
+fn encode_single_destination(recipient: &str, amount: u64) -> Vec<u8> {
+    let addr_bytes = recipient.as_bytes();
+    let mut buf = Vec::with_capacity(4 + 4 + addr_bytes.len() + 8);
+    buf.extend_from_slice(&1u32.to_le_bytes());
+    buf.extend_from_slice(&(addr_bytes.len() as u32).to_le_bytes());
+    buf.extend_from_slice(addr_bytes);
+    buf.extend_from_slice(&amount.to_le_bytes());
+    buf
+}
+
+fn parse_destinations(
+    data: &[u8],
+    network: monero_wallet::address::Network,
+) -> Result<Vec<(monero_wallet::address::MoneroAddress, u64)>, String> {
+    if data.len() < 4 {
+        return Err(format!("destinations blob too short: {} bytes", data.len()));
+    }
+    let count = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+    let mut offset = 4;
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        if data.len() < offset + 4 {
+            return Err(format!("destinations[{}]: truncated at addr_len header", i));
+        }
+        let addr_len = u32::from_le_bytes(
+            data[offset..offset + 4].try_into().unwrap(),
+        ) as usize;
+        offset += 4;
+        if data.len() < offset + addr_len + 8 {
+            return Err(format!(
+                "destinations[{}]: truncated (need {} address bytes + 8 amount bytes)",
+                i, addr_len,
+            ));
+        }
+        let addr_str = std::str::from_utf8(&data[offset..offset + addr_len])
+            .map_err(|e| format!("destinations[{}]: invalid utf-8 address: {}", i, e))?;
+        offset += addr_len;
+        let amount = u64::from_le_bytes(
+            data[offset..offset + 8].try_into().unwrap(),
+        );
+        offset += 8;
+        let addr = monero_wallet::address::MoneroAddress::from_str(network, addr_str)
+            .map_err(|e| format!("destinations[{}]: parse address: {:?}", i, e))?;
+        out.push((addr, amount));
+    }
+    Ok(out)
 }
 
 #[wasm_bindgen]
@@ -278,7 +373,7 @@ pub fn fromt_spend_preprocess(
         .map_err(|e| JsValue::from_str(&format!("parse signable tx: {:?}", e)))?;
 
     let (sign_machine, preprocess_bytes) = spend::spend_preprocess(signable, keys)
-        .map_err(to_js_err)?;
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
 
     let handle = Handle::allocate(sign_machine).map_err(to_js_err)?;
     let handle_id = unsafe { std::mem::transmute::<Handle, i32>(handle) };
@@ -327,7 +422,7 @@ pub fn fromt_spend_sign(
     }
 
     let (sig_machine, share_bytes) = spend::spend_sign(sign_machine, preprocesses)
-        .map_err(to_js_err)?;
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))?;
 
     let new_handle = Handle::allocate(sig_machine).map_err(to_js_err)?;
     let new_handle_id = unsafe { std::mem::transmute::<Handle, i32>(new_handle) };
@@ -356,7 +451,8 @@ pub fn fromt_spend_complete(
         shares.insert(Participant::new(id).unwrap(), bytes);
     }
 
-    spend::spend_complete(sig_machine, shares).map_err(to_js_err)
+    spend::spend_complete(sig_machine, shares)
+        .map_err(|e| JsValue::from_str(&format!("{}", e)))
 }
 
 #[wasm_bindgen]

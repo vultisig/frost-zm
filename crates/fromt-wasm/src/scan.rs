@@ -241,6 +241,30 @@ pub fn fromt_filter_spent_outputs(
     Ok(vec![bal_lo, bal_hi, num_unspent])
 }
 
+/// Pedersen commitment `C = mask*G + amount*H` for a wallet output.
+/// Use this for the *real* ring member — LWS `rct` leading bytes are
+/// not always the on-chain commitment point that `monero-wallet`
+/// validates during CLSAG setup.
+#[wasm_bindgen]
+pub fn fromt_pedersen_commitment(
+    commitment_mask: &[u8],
+    amount: u64,
+) -> Result<Vec<u8>, JsValue> {
+    use monero_wallet::ed25519::{Commitment, Scalar as MScalar};
+
+    if commitment_mask.len() != 32 {
+        return Err(JsValue::from_str("commitment_mask must be 32 bytes"));
+    }
+    let mut mask_arr = [0u8; 32];
+    mask_arr.copy_from_slice(commitment_mask);
+    let mask_scalar = curve25519_dalek::Scalar::from_canonical_bytes(mask_arr);
+    if bool::from(mask_scalar.is_none()) {
+        return Err(JsValue::from_str("invalid commitment mask scalar"));
+    }
+    let commitment = Commitment::new(MScalar::from(mask_scalar.unwrap()), amount);
+    Ok(commitment.commit().compress().to_bytes().to_vec())
+}
+
 #[wasm_bindgen]
 pub fn fromt_derive_commitment_mask(
     view_secret_key: &[u8],
@@ -289,9 +313,22 @@ pub fn fromt_derive_commitment_mask(
     keccak.update(&buf);
     keccak.finalize(&mut derivation_hash);
 
-    let mut mask_buf = Vec::with_capacity(48);
+    // Monero's `genCommitmentMask` expects the *reduced* scalar form of
+    // `derivation_to_scalar(derivation, output_index)` as its input —
+    // see `src/crypto/crypto.cpp` in `monero-project/monero`. Earlier
+    // revisions of this helper hashed the raw keccak digest, which only
+    // matches reference behaviour when the hash already happens to be
+    // `< l` (about 7/8 of the time). When it doesn't, the resulting
+    // Pedersen commitment differs from the on-chain output, and CLSAG
+    // verification fails at broadcast with `verRctCLSAGSimple failed
+    // for input N`. Reducing mod l before the second hash keeps us
+    // bit-for-bit compatible with monero-wallet-cli and `monero-oxide`.
+    let derivation_scalar = curve25519_dalek::Scalar::from_bytes_mod_order(derivation_hash);
+    let derivation_scalar_bytes = derivation_scalar.to_bytes();
+
+    let mut mask_buf = Vec::with_capacity(15 + 32);
     mask_buf.extend_from_slice(b"commitment_mask");
-    mask_buf.extend_from_slice(&derivation_hash);
+    mask_buf.extend_from_slice(&derivation_scalar_bytes);
 
     let mut mask_hash = [0u8; 32];
     let mut keccak2 = Keccak::v256();
@@ -312,4 +349,90 @@ pub fn fromt_keyshare_birthday(key_share: &[u8]) -> Result<u64, JsValue> {
 pub fn fromt_keyshare_network(key_share: &[u8]) -> Result<u8, JsValue> {
     let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
     Ok(bundle.network)
+}
+
+/// Number of signing parties in this bundle's FROST group. A return of
+/// `1` means the bundle is a true 1-of-1 share — the `signing_share`
+/// inside `KeyPackage` IS the full Monero spend secret and the wallet
+/// can compute key images locally without any MPC ceremony. Anything
+/// `>= 2` means the spend secret is sharded and the proper key-image
+/// path is `fromt_key_image_part1` / `_part2`.
+#[wasm_bindgen]
+pub fn fromt_keyshare_max_signers(key_share: &[u8]) -> Result<u16, JsValue> {
+    let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
+    Ok(bundle.pub_key_package.verifying_shares().len() as u16)
+}
+
+/// Extract the 32-byte Monero spend secret from a *single-party*
+/// `KeyShareBundle`. Errors if the bundle is threshold (max_signers
+/// >= 2); the spend secret can only be reconstructed via an MPC
+/// ceremony in that case.
+///
+/// Used by the receive panel to compute the wallet's real key image
+/// for each LWS-reported unspent output so we can filter out outputs
+/// that have actually been spent (LWS only returns ring-decoy
+/// candidate key images and cannot do this check itself).
+#[wasm_bindgen]
+pub fn fromt_keyshare_spend_secret_singleparty(
+    key_share: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+    use frost_core::keys::SigningShare;
+    let bundle = KeyShareBundle::deserialize(key_share).map_err(to_js_err)?;
+    let max_signers = bundle.pub_key_package.verifying_shares().len();
+    if max_signers != 1 {
+        return Err(JsValue::from_str(&format!(
+            "spend secret extraction requires a 1-of-1 share (got {max_signers}-party bundle)"
+        )));
+    }
+    let signing_share: &SigningShare<frost_ed25519::Ed25519Sha512> =
+        bundle.key_package.signing_share();
+    let bytes: Vec<u8> = signing_share.serialize();
+    if bytes.len() != 32 {
+        return Err(JsValue::from_str(&format!(
+            "unexpected signing share length: {}",
+            bytes.len()
+        )));
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the CLSAG broadcast failure (May 2026).
+    ///
+    /// The fixture is the live "Jittery" test wallet's first UTXO
+    /// (tx `dc6089e…`, output index 1). We feed the same view-secret
+    /// and tx pub key the WASM sees in production and assert the
+    /// commitment we build is `monerod`'s on-chain `mask` byte-for-byte.
+    /// Without the `sc_reduce32(H_s)` fix in
+    /// `fromt_derive_commitment_mask` this case produced
+    /// `7478c117…`, which CLSAG rejected at broadcast with
+    /// `verRctCLSAGSimple failed for input 0`.
+    #[test]
+    fn commitment_mask_matches_monero_for_real_utxo() {
+        let view = hex_to_bytes(
+            "5fa6accbc81497385fb1c94139618eeb83b6caacff75b052f1620bc29c4f410c",
+        );
+        let tx_pub = hex_to_bytes(
+            "3b56e8c4248603a462fd27625b14b348ea920f1a97d3e629e7a525de03591b77",
+        );
+        let mask = fromt_derive_commitment_mask(&view, &tx_pub, 1).expect("mask");
+        let commitment = fromt_pedersen_commitment(&mask, 722_980_000u64).expect("commit");
+        let expected = hex_to_bytes(
+            "d97475b2e3b4f50351826b845343615b591dfdeca18859bdd0ecd6163cc465a4",
+        );
+        assert_eq!(
+            commitment, expected,
+            "commitment derivation drifted from monerod's on-chain mask",
+        );
+    }
+
+    fn hex_to_bytes(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
 }

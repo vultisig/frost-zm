@@ -533,6 +533,33 @@ pub async fn scan_outputs<R: ProvidesBlockchain + ProvidesTransactions + Provide
     Ok(buf)
 }
 
+/// Error returned by the FROST spend pipeline. Carries the
+/// `lib_error` code that native FFI callers expect plus a short
+/// human-readable explanation that WASM callers surface to the
+/// browser console, so we don't lose the underlying
+/// `multisig`/`sign`/`complete` failure detail.
+#[derive(Debug)]
+pub struct SpendError {
+    pub code: lib_error,
+    pub message: String,
+}
+
+impl SpendError {
+    pub fn new(code: lib_error, message: impl Into<String>) -> Self {
+        Self { code, message: message.into() }
+    }
+}
+
+impl From<SpendError> for lib_error {
+    fn from(err: SpendError) -> Self { err.code }
+}
+
+impl std::fmt::Display for SpendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {}", self.code, self.message)
+    }
+}
+
 pub fn spend_preprocess(
     signable: SignableTransaction,
     keys: ThresholdKeys<dalek_ff_group::Ed25519>,
@@ -541,13 +568,14 @@ pub fn spend_preprocess(
         monero_wallet::send::TransactionSignMachine,
         Vec<u8>,
     ),
-    lib_error,
+    SpendError,
 > {
     let machine = signable
         .multisig(keys)
         .map_err(|e| {
-            debug_log!("[fromt][spend_preprocess] multisig failed: {:?}", e);
-            lib_error::LIB_SIGNING_ERROR
+            let msg = format!("multisig setup failed: {:?}", e);
+            debug_log!("[fromt][spend_preprocess] {msg}");
+            SpendError::new(lib_error::LIB_SIGNING_ERROR, msg)
         })?;
 
     let (sign_machine, preprocess) = machine.preprocess(&mut OsRng);
@@ -555,7 +583,10 @@ pub fn spend_preprocess(
     let mut preprocess_bytes = Vec::new();
     preprocess
         .write(&mut preprocess_bytes)
-        .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+        .map_err(|e| SpendError::new(
+            lib_error::LIB_SERIALIZATION_ERROR,
+            format!("preprocess write failed: {e:?}"),
+        ))?;
 
     Ok((sign_machine, preprocess_bytes))
 }
@@ -568,31 +599,37 @@ pub fn spend_sign(
         monero_wallet::send::TransactionSignatureMachine,
         Vec<u8>,
     ),
-    lib_error,
+    SpendError,
 > {
     let mut parsed_preprocesses = HashMap::new();
     for (participant, bytes) in &preprocesses {
         let preprocess = sign_machine
             .read_preprocess(&mut bytes.as_slice())
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+            .map_err(|e| SpendError::new(
+                lib_error::LIB_SERIALIZATION_ERROR,
+                format!("read_preprocess(participant={:?}) failed: {e:?}", participant),
+            ))?;
         parsed_preprocesses.insert(*participant, preprocess);
     }
 
+    let participant_count = preprocesses.len();
     let (sig_machine, share) = sign_machine
         .sign(parsed_preprocesses, &[])
         .map_err(|e| {
-            debug_log!(
-                "[fromt][spend_sign] sign failed: participants={}, error={:?}",
-                preprocesses.len(),
-                e
+            let msg = format!(
+                "sign failed (participants={participant_count}): {e:?}"
             );
-            lib_error::LIB_SIGNING_ERROR
+            debug_log!("[fromt][spend_sign] {msg}");
+            SpendError::new(lib_error::LIB_SIGNING_ERROR, msg)
         })?;
 
     let mut share_bytes = Vec::new();
     share
         .write(&mut share_bytes)
-        .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+        .map_err(|e| SpendError::new(
+            lib_error::LIB_SERIALIZATION_ERROR,
+            format!("share write failed: {e:?}"),
+        ))?;
 
     Ok((sig_machine, share_bytes))
 }
@@ -600,32 +637,36 @@ pub fn spend_sign(
 pub fn spend_complete(
     sig_machine: monero_wallet::send::TransactionSignatureMachine,
     shares: HashMap<Participant, Vec<u8>>,
-) -> Result<Vec<u8>, lib_error> {
+) -> Result<Vec<u8>, SpendError> {
     let mut parsed_shares = HashMap::new();
     for (participant, bytes) in &shares {
         let share = sig_machine
             .read_share(&mut bytes.as_slice())
-            .map_err(|_| lib_error::LIB_SERIALIZATION_ERROR)?;
+            .map_err(|e| SpendError::new(
+                lib_error::LIB_SERIALIZATION_ERROR,
+                format!("read_share(participant={:?}) failed: {e:?}", participant),
+            ))?;
         parsed_shares.insert(*participant, share);
     }
 
+    let share_count = shares.len();
     let tx = sig_machine
         .complete(parsed_shares)
         .map_err(|e| {
-            debug_log!(
-                "[fromt][spend_complete] complete failed: participants={}, error={:?}",
-                shares.len(),
-                e
+            let msg = format!(
+                "complete failed (participants={share_count}): {e:?}"
             );
-            lib_error::LIB_SIGNING_ERROR
+            debug_log!("[fromt][spend_complete] {msg}");
+            SpendError::new(lib_error::LIB_SIGNING_ERROR, msg)
         })?;
 
     let tx_bytes = tx.serialize();
 
     let tx2 = monero_wallet::transaction::Transaction::<monero_wallet::transaction::NotPruned>::read(&mut tx_bytes.as_slice())
         .map_err(|e| {
-            debug_log!("[fromt] TX round-trip read failed: {:?}", e);
-            lib_error::LIB_SERIALIZATION_ERROR
+            let msg = format!("TX round-trip read failed: {:?}", e);
+            debug_log!("[fromt] {msg}");
+            SpendError::new(lib_error::LIB_SERIALIZATION_ERROR, msg)
         })?;
     let tx2_bytes = tx2.serialize();
 
