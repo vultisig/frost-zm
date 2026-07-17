@@ -850,4 +850,175 @@ mod tests {
         assert!(result.is_ok(), "CLSAG signing with converted keys should succeed: {:?}", result.err());
         debug_log!("CLSAG with converted frost-ed25519 keyshares: PASSED");
     }
+
+    /// End-to-end regression for the distributed cosign path.
+    ///
+    /// `test_clsag_with_converted_keys` only asserts `complete()` is
+    /// `Ok`. `ClsagMultisig::complete` self-verifies internally, so
+    /// that already proves the signature is valid *for the ring it was
+    /// handed* — but it does NOT reproduce what monerod does: take the
+    /// finished `Clsag`, an independently-derived key image, the
+    /// pseudo-out and the message, and run `Clsag::verify`. This test
+    /// closes that gap so a future change to the FROST→CLSAG glue that
+    /// produces a locally-"valid" but chain-rejected signature fails
+    /// here instead of at broadcast.
+    ///
+    /// The key image is reconstructed the way the chain expects it
+    /// (`x · Hp(P)` where `x` is the interpolated group secret and
+    /// `Hp(P)` the multisig's key-image generator), proving the
+    /// distributed signers collectively control exactly the group key
+    /// that owns the spent output.
+    #[test]
+    fn test_clsag_distributed_verifies() {
+        use std::collections::HashMap;
+        use rand::rngs::OsRng;
+        use rand::RngCore;
+        use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
+        use curve25519_dalek::{Scalar as CdScalar, edwards::EdwardsPoint as CdPoint};
+        use monero_wallet::ed25519::{Scalar as MScalar, CompressedPoint, Commitment};
+        use monero_clsag::{Decoys, ClsagContext, ClsagMultisig};
+        use flexible_transcript::{Transcript as _, RecommendedTranscript};
+        use modular_frost::sign::{
+            PreprocessMachine, SignMachine, SignatureMachine, AlgorithmMachine,
+        };
+
+        let results = run_dkg(3, 2);
+
+        let mut all_keys: HashMap<Participant, ThresholdKeys<dalek_ff_group::Ed25519>> =
+            HashMap::new();
+        for bundle_bytes in &results {
+            let bundle = KeyShareBundle::deserialize(bundle_bytes).unwrap();
+            let keys = convert_keyshare(&bundle).unwrap();
+            all_keys.insert(keys.params().i(), keys);
+        }
+
+        let group_key = all_keys[&Participant::new(1).unwrap()].group_key().0;
+
+        let amount = 1_000_000_000_000u64;
+        let ring_len = 16u8;
+        let ring_index = 3u8;
+        let commitment_mask: CdScalar = MScalar::random(&mut OsRng).into();
+
+        // Build the ring with our group key as the real member.
+        let mut ring = vec![];
+        for i in 0..ring_len {
+            let (dest, mask, amt) = if i == ring_index {
+                (group_key, commitment_mask, amount)
+            } else {
+                let d = &MScalar::random(&mut OsRng).into() * ED25519_BASEPOINT_TABLE;
+                let m: CdScalar = MScalar::random(&mut OsRng).into();
+                (d, m, OsRng.next_u64())
+            };
+            ring.push([
+                CompressedPoint::from(dest.compress().to_bytes()).decompress().unwrap(),
+                Commitment::new(MScalar::from(mask), amt).commit(),
+            ]);
+        }
+
+        let pseudo_mask: CdScalar = MScalar::random(&mut OsRng).into();
+        let signers = [Participant::new(1).unwrap(), Participant::new(2).unwrap()];
+
+        // Capture the key-image generator `Hp(P)` once — it only
+        // depends on the real ring member, identical for every signer.
+        let mut key_image_generator: Option<CdPoint> = None;
+        let mut machines = HashMap::new();
+        for &pid in &signers {
+            let (algorithm, mask_send) = ClsagMultisig::new(
+                RecommendedTranscript::new(b"fromt CLSAG verify test"),
+                ClsagContext::new(
+                    Decoys::new(
+                        (1..=u64::from(ring_len)).collect(),
+                        ring_index,
+                        ring.clone(),
+                    )
+                    .unwrap(),
+                    Commitment::new(MScalar::from(commitment_mask), amount),
+                )
+                .unwrap(),
+            );
+            if key_image_generator.is_none() {
+                key_image_generator = Some(algorithm.key_image_generator());
+            }
+            mask_send.send(pseudo_mask);
+            machines.insert(pid, AlgorithmMachine::new(algorithm, all_keys[&pid].clone()));
+        }
+        let key_image_generator = key_image_generator.unwrap();
+
+        let mut msg = [0u8; 32];
+        OsRng.fill_bytes(&mut msg);
+
+        // Round 1 — preprocess.
+        let mut sign_machines = HashMap::new();
+        let mut preprocesses = HashMap::new();
+        for (pid, machine) in machines {
+            let (sm, pp) = machine.preprocess(&mut OsRng);
+            let mut pp_bytes = Vec::new();
+            pp.write(&mut pp_bytes).unwrap();
+            sign_machines.insert(pid, sm);
+            preprocesses.insert(pid, pp_bytes);
+        }
+
+        // Round 2 — sign.
+        let mut sig_machines = HashMap::new();
+        let mut shares = HashMap::new();
+        for (pid, sm) in sign_machines {
+            let mut other_pps = HashMap::new();
+            for (&other_pid, pp_bytes) in &preprocesses {
+                if other_pid != pid {
+                    other_pps.insert(other_pid, sm.read_preprocess(&mut pp_bytes.as_slice()).unwrap());
+                }
+            }
+            let (sigm, share) = sm.sign(other_pps, &msg).unwrap();
+            let mut share_bytes = Vec::new();
+            share.write(&mut share_bytes).unwrap();
+            sig_machines.insert(pid, sigm);
+            shares.insert(pid, share_bytes);
+        }
+
+        // Round 3 — complete on one coordinator.
+        let first_pid = *sig_machines.keys().next().unwrap();
+        let sigm = sig_machines.remove(&first_pid).unwrap();
+        let mut other_shares = HashMap::new();
+        for (&pid, share_bytes) in &shares {
+            if pid != first_pid {
+                other_shares.insert(pid, sigm.read_share(&mut share_bytes.as_slice()).unwrap());
+            }
+        }
+        let (clsag, pseudo_out) = sigm
+            .complete(other_shares)
+            .expect("distributed CLSAG complete must succeed");
+
+        // Independently reconstruct the group secret from the signing
+        // set's interpolated shares; `secret_share()` already carries
+        // the Lagrange coefficient for `included`.
+        let included = signers.to_vec();
+        let mut group_secret = CdScalar::ZERO;
+        for pid in &signers {
+            let view = all_keys[pid].view(included.clone()).unwrap();
+            group_secret += **view.secret_share();
+        }
+        assert_eq!(
+            &group_secret * ED25519_BASEPOINT_TABLE,
+            group_key,
+            "reconstructed group secret must reproduce the group key",
+        );
+
+        // key image = x · Hp(P) — exactly what the chain derives.
+        let key_image = key_image_generator * group_secret;
+
+        // Verify EXACTLY as monerod would: finished CLSAG, key image,
+        // pseudo-out, message hash, against the compressed ring.
+        let ring_compressed: Vec<[CompressedPoint; 2]> =
+            ring.iter().map(|m| [m[0].compress(), m[1].compress()]).collect();
+        clsag
+            .verify(
+                ring_compressed,
+                &CompressedPoint::from(key_image.compress().to_bytes()),
+                &CompressedPoint::from(pseudo_out.compress().to_bytes()),
+                &msg,
+            )
+            .expect("distributed CLSAG must verify against the chain-derived key image");
+
+        debug_log!("distributed 2-of-3 CLSAG independently verified: PASSED");
+    }
 }
